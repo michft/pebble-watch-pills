@@ -1,0 +1,48 @@
+{
+  "name": "pebble-pills",
+  "author": "mt",
+  "version": "1.0.0",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "build": "pebble build",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.ts tests/*.test.js"
+  },
+  "pebble": {
+    "displayName": "Pill Reminder",
+    "uuid": "0b31b7f2-71e8-4610-830d-f7eaebef5494",
+    "projectType": "native",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery"
+    ],
+    "capabilities": [
+      "configurable",
+      "wakeup"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "TYPE",
+      "PAYLOAD"
+    ],
+    "resources": {
+      "media": [
+        {
+          "menuIcon": true,
+          "type": "bitmap",
+          "name": "IMAGE_MENU_ICON",
+          "file": "images/menu_icon.png"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
