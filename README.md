@@ -72,15 +72,27 @@ Every push to `main` runs `.github/workflows/release.yml`, tests and builds the
 app, uploads the new release to the Pebble app store, then creates the GitHub
 Release. Configure these GitHub repository settings first:
 
-- Secret `REBBLE_ACCESS_TOKEN`: the bearer access token from a signed-in
-  Rebble Developer Portal session.
+- Secret `PEBBLE_FIREBASE_REFRESH_TOKEN`: the Firebase refresh token created by
+  the current rePebble `pebble login` flow.
 
-The workflow contains the public Developer Portal DB ID
-`384b30aa3eeb468ba63a4f7e`; it is not the PBW UUID.
+On macOS, sign in and pipe the refresh token directly into GitHub without
+printing it:
 
-The portal access token can expire. Replace the secret if deployment returns
-HTTP 401. A reused version fails before build; bump `package.json` and add its
-changelog entry before retrying.
+```sh
+pebble login
+jq -r .refresh_token \
+  "$HOME/Library/Application Support/Pebble SDK/oauth_firebase/firebase_oauth_storage.json" \
+  | gh secret set PEBBLE_FIREBASE_REFRESH_TOKEN --repo michft/pebble-pills
+```
+
+The workflow exchanges that refresh token for a short-lived Firebase ID token,
+then uses the supported `pebble publish` command. The existing app is resolved
+from PBW UUID `0b31b7f2-71e8-4610-830d-f7eaebef5494`; its public app-store ID is
+`384b30aa3eeb468ba63a4f7e`.
+
+If authentication is revoked, run `pebble login` and the `jq | gh secret set`
+command again. A reused version fails before build; bump `package.json` and add
+its changelog entry before retrying.
 
 ## Install
 
