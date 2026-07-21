@@ -13,9 +13,9 @@ function escapeHtml(value) {
 }
 
 /**
- * Formats a value as a two-digit string.
+ * Formats a value with a leading zero when it is less than 10.
  * @param {number} value - The value to format.
- * @return {string} The value prefixed with `0` when it is less than 10.
+ * @return {string} The value as a string, prefixed with `0` when less than 10.
  */
 function pad2(value) {
   return value < 10 ? "0" + value : String(value);
@@ -67,10 +67,10 @@ function countOutcomes(events) {
 }
 
 /**
- * Builds an HTML summary card for event outcome counts.
+ * Renders an HTML card showing event outcome counts and the taken percentage.
  * @param {string} title - The card heading.
- * @param {Object} counts - Outcome counts used to calculate the taken percentage.
- * @returns {string} An HTML summary card.
+ * @param {Object} counts - Outcome counts used to calculate the percentage.
+ * @returns {string} The HTML summary card.
  */
 function summaryCard(title, counts) {
   var percentage = counts.scheduled === 0

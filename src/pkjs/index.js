@@ -26,8 +26,8 @@ function defaultState() {
 }
 
 /**
- * Loads the persisted phone-side state, falling back to default state when the stored data is missing or invalid.
- * @returns {Object} The persisted state or a default state with a warning after a read error.
+ * Loads and normalises the persisted phone-side state.
+ * @return {Object} The stored state, or a default state; includes a warning when a read error resets the data.
  */
 function loadState() {
   try {
@@ -129,7 +129,7 @@ function prunePhoneHistory(state) {
 }
 
 /**
- * Processes an event batch and updates the stored event history.
+ * Merges a received event batch into the stored event history.
  * @param {Object} payload - The batch containing the installation identifier, events, and dropped-event count.
  */
 function handleEventBatch(payload) {
