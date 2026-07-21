@@ -1,0 +1,22 @@
+# Pebble SDK output
+build/
+*.pbw
+*.pbl
+.lock-waf_*
+
+# JavaScript tooling
+node_modules/
+.pnpm-store/
+package-lock.json
+coverage/
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
+
+# Editors and macOS
+.DS_Store
+.idea/
+.vscode/
