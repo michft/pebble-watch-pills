@@ -871,15 +871,15 @@ static void init(void) {
   Layer *root = window_get_root_layer(s_window);
   GRect bounds = layer_get_bounds(root);
 
-  s_header = make_text_layer(GRect(0, 0, bounds.size.w, 34), fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), GTextAlignmentCenter);
+  s_header = make_text_layer(GRect(0, 0, bounds.size.w, 40), fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD), GTextAlignmentCenter);
   text_layer_set_background_color(s_header, GColorOxfordBlue);
   text_layer_set_text_color(s_header, GColorWhite);
   layer_add_child(root, text_layer_get_layer(s_header));
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
-    s_rows[i] = make_text_layer(GRect(4, 38 + i * 38, bounds.size.w - 8, 36), fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GTextAlignmentLeft);
+    s_rows[i] = make_text_layer(GRect(4, 46 + i * 38, bounds.size.w - 8, 36), fonts_get_system_font(FONT_KEY_GOTHIC_20_BOLD), GTextAlignmentLeft);
     layer_add_child(root, text_layer_get_layer(s_rows[i]));
   }
-  s_footer = make_text_layer(GRect(4, 194, bounds.size.w - 8, 28), fonts_get_system_font(FONT_KEY_GOTHIC_14), GTextAlignmentCenter);
+  s_footer = make_text_layer(GRect(4, 198, bounds.size.w - 8, 32), fonts_get_system_font(FONT_KEY_GOTHIC_16), GTextAlignmentCenter);
   layer_add_child(root, text_layer_get_layer(s_footer));
 
   app_message_register_inbox_received(inbox_received);
