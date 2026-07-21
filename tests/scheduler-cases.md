@@ -4,6 +4,7 @@ Run on Emery emulator, then physical Pebble Time 2.
 
 - Enable all defaults. Confirm one OS wakeup exists for earliest enabled slot.
 - Set slot 1 two minutes ahead. Exit app. Confirm wake launch and vibration.
+- Leave the alert unanswered. Confirm vibration repeats every 30 seconds for five minutes, then stops and records `no_response`.
 - On alert, press Select. Confirm self-reported `taken`, then next-day wakeup.
 - Repeat; press Down. Confirm `skipped`.
 - Repeat; press Back. Confirm `no_response` persists.
@@ -15,3 +16,7 @@ Run on Emery emulator, then physical Pebble Time 2.
 - Cross local midnight and DST boundary. Confirm next occurrence keeps local wall time.
 - Change phone/watch timezone. Open app once. Confirm rolling schedule reconciles.
 - Disable all slots. Confirm no OS wakeup remains.
+- With four enabled reminders, confirm only three are visible and Up/Down scrolls to the fourth.
+- Disable one reminder. Confirm `+ Add reminder` is reachable after the enabled reminders.
+- Disable until fewer than three remain. Confirm `+ Add reminder` stays on the bottom visible row.
+- Select `+ Add reminder`, save, and confirm the reminder returns to the scrolling list and is scheduled.

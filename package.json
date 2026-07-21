@@ -11,6 +11,7 @@
     "node": ">=22.18.0"
   },
   "scripts": {
+    "dev": "pebble build --watch",
     "build": "pebble build",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.ts tests/*.test.js"
   },
