@@ -132,8 +132,10 @@ test("drops persisted events with inconsistent outcome timestamps", () => {
 
 test("rejects persisted history above the watch limit", () => {
   const state = createDefaultState(1_000, 0.25);
-  const serialized = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
-  serialized.events = Array.from({ length: 129 }, () => ({}));
+  for (let index = 0; index < 129; index += 1) {
+    ensureReminderEvent(state, (index % 4) as 0 | 1 | 2 | 3, 10_000 + index);
+  }
+  const serialized = JSON.parse(JSON.stringify(state));
 
   assert.equal(decodeAppState(serialized), null);
 });
