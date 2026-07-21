@@ -20,7 +20,7 @@ Requirements:
 
 - Python 3.10+
 - `uv`
-- Node.js
+- Node.js 22.18.0+
 - pnpm
 - rePebble `pebble-tool` and current SDK
 

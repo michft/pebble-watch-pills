@@ -148,6 +148,8 @@ function decodeEvent(value: unknown, installId: string): ReminderEvent | null {
     || typeof value.localDay !== "string"
     || !/^\d{4}-\d{2}-\d{2}$/.test(value.localDay)
     || !isOutcome(value.outcome)
+    || value.outcome === "no_response" && answeredAt !== null
+    || value.outcome !== "no_response" && answeredAt === null
   ) {
     return null;
   }
@@ -173,6 +175,7 @@ export function decodeAppState(value: unknown): AppState | null {
     || !Array.isArray(value.slots)
     || value.slots.length !== SLOT_COUNT
     || !Array.isArray(value.events)
+    || value.events.length > WATCH_HISTORY_LIMIT
   ) {
     return null;
   }

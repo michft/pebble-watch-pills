@@ -7,6 +7,9 @@
   ],
   "private": true,
   "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "build": "pebble build",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.ts tests/*.test.js"

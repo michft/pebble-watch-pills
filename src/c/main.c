@@ -2,8 +2,9 @@
 
 #define SLOT_COUNT 4
 #define EVENT_LIMIT 128
-#define STATE_VERSION 1
-#define PERSIST_KEY_STATE 1
+#define STATE_VERSION 2
+#define PERSIST_KEY_META 1
+#define PERSIST_KEY_EVENTS_BASE 2
 
 typedef enum {
   SCREEN_MAIN,
@@ -45,6 +46,22 @@ typedef struct {
   ReminderEvent events[EVENT_LIMIT];
 } AppState;
 
+typedef struct {
+  uint16_t version;
+  uint32_t install_id;
+  uint32_t next_sequence;
+  uint32_t settings_revision;
+  uint16_t event_count;
+  uint16_t dropped_events;
+  ReminderSlot slots[SLOT_COUNT];
+  uint32_t checksum;
+} PersistMeta;
+
+#define EVENTS_PER_CHUNK (PERSIST_DATA_MAX_LENGTH / sizeof(ReminderEvent))
+
+_Static_assert(sizeof(PersistMeta) <= PERSIST_DATA_MAX_LENGTH, "PersistMeta exceeds Pebble value limit");
+_Static_assert(EVENTS_PER_CHUNK > 0, "ReminderEvent exceeds Pebble value limit");
+
 static Window *s_window;
 static TextLayer *s_header;
 static TextLayer *s_rows[SLOT_COUNT];
@@ -54,10 +71,11 @@ static Screen s_screen = SCREEN_MAIN;
 static uint8_t s_selected_slot;
 static uint8_t s_edit_field;
 static ReminderSlot s_edit_slot;
-static int16_t s_active_event = -1;
+static uint32_t s_active_event_sequence;
 static bool s_select_long;
 static bool s_syncing;
 static bool s_schedule_error;
+static bool s_storage_error;
 static uint16_t s_sync_index;
 static char s_header_text[32];
 static char s_footer_text[64];
@@ -68,8 +86,69 @@ static uint8_t s_header_buffer;
 static uint8_t s_row_buffer[SLOT_COUNT];
 static uint8_t s_footer_buffer;
 
-static void save_state(void) {
-  persist_write_data(PERSIST_KEY_STATE, &s_state, sizeof(s_state));
+static uint32_t checksum_bytes(uint32_t checksum, const void *data, size_t size) {
+  const uint8_t *bytes = data;
+  for (size_t i = 0; i < size; i++) {
+    checksum ^= bytes[i];
+    checksum *= 16777619u;
+  }
+  return checksum;
+}
+
+static uint32_t state_checksum(const AppState *state) {
+  uint32_t checksum = 2166136261u;
+  checksum = checksum_bytes(checksum, &state->version, sizeof(state->version));
+  checksum = checksum_bytes(checksum, &state->install_id, sizeof(state->install_id));
+  checksum = checksum_bytes(checksum, &state->next_sequence, sizeof(state->next_sequence));
+  checksum = checksum_bytes(checksum, &state->settings_revision, sizeof(state->settings_revision));
+  checksum = checksum_bytes(checksum, &state->event_count, sizeof(state->event_count));
+  checksum = checksum_bytes(checksum, &state->dropped_events, sizeof(state->dropped_events));
+  checksum = checksum_bytes(checksum, state->slots, sizeof(state->slots));
+  checksum = checksum_bytes(
+    checksum,
+    state->events,
+    sizeof(ReminderEvent) * state->event_count
+  );
+  return checksum;
+}
+
+static bool save_state(void) {
+  for (uint16_t offset = 0, chunk = 0; offset < s_state.event_count; chunk++) {
+    uint16_t remaining = s_state.event_count - offset;
+    uint16_t event_count = remaining < EVENTS_PER_CHUNK ? remaining : EVENTS_PER_CHUNK;
+    size_t size = sizeof(ReminderEvent) * event_count;
+    int written = persist_write_data(
+      PERSIST_KEY_EVENTS_BASE + chunk,
+      &s_state.events[offset],
+      size
+    );
+    if (written != (int)size) {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "Event persistence failed: %d", written);
+      s_storage_error = true;
+      return false;
+    }
+    offset += event_count;
+  }
+
+  PersistMeta meta = {
+    .version = s_state.version,
+    .install_id = s_state.install_id,
+    .next_sequence = s_state.next_sequence,
+    .settings_revision = s_state.settings_revision,
+    .event_count = s_state.event_count,
+    .dropped_events = s_state.dropped_events,
+    .checksum = state_checksum(&s_state),
+  };
+  memcpy(meta.slots, s_state.slots, sizeof(meta.slots));
+  int written = persist_write_data(PERSIST_KEY_META, &meta, sizeof(meta));
+  if (written != (int)sizeof(meta)) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Metadata persistence failed: %d", written);
+    s_storage_error = true;
+    return false;
+  }
+
+  s_storage_error = false;
+  return true;
 }
 
 static void reset_state(void) {
@@ -84,16 +163,44 @@ static void reset_state(void) {
     s_state.slots[i].enabled = true;
     s_state.slots[i].wakeup_id = -1;
   }
-  save_state();
+  (void)save_state();
 }
 
 static void load_state(void) {
-  if (
-    persist_get_size(PERSIST_KEY_STATE) != (int)sizeof(s_state)
-    || persist_read_data(PERSIST_KEY_STATE, &s_state, sizeof(s_state)) != (int)sizeof(s_state)
-    || s_state.version != STATE_VERSION
-    || s_state.event_count > EVENT_LIMIT
-  ) {
+  PersistMeta meta;
+  bool restored = persist_get_size(PERSIST_KEY_META) == (int)sizeof(meta)
+    && persist_read_data(PERSIST_KEY_META, &meta, sizeof(meta)) == (int)sizeof(meta)
+    && meta.version == STATE_VERSION
+    && meta.event_count <= EVENT_LIMIT;
+
+  if (restored) {
+    memset(&s_state, 0, sizeof(s_state));
+    s_state.version = meta.version;
+    s_state.install_id = meta.install_id;
+    s_state.next_sequence = meta.next_sequence;
+    s_state.settings_revision = meta.settings_revision;
+    s_state.event_count = meta.event_count;
+    s_state.dropped_events = meta.dropped_events;
+    memcpy(s_state.slots, meta.slots, sizeof(s_state.slots));
+
+    for (uint16_t offset = 0, chunk = 0; offset < s_state.event_count; chunk++) {
+      uint16_t remaining = s_state.event_count - offset;
+      uint16_t event_count = remaining < EVENTS_PER_CHUNK ? remaining : EVENTS_PER_CHUNK;
+      size_t size = sizeof(ReminderEvent) * event_count;
+      if (persist_read_data(
+        PERSIST_KEY_EVENTS_BASE + chunk,
+        &s_state.events[offset],
+        size
+      ) != (int)size) {
+        restored = false;
+        break;
+      }
+      offset += event_count;
+    }
+    restored = restored && meta.checksum == state_checksum(&s_state);
+  }
+
+  if (!restored) {
     reset_state();
   }
 }
@@ -150,15 +257,15 @@ static void schedule_next(void) {
       APP_LOG(APP_LOG_LEVEL_ERROR, "Wakeup schedule failed: %ld", (long)id);
     }
   }
-  save_state();
+  (void)save_state();
 }
 
-static int16_t add_event(uint8_t slot_id, time_t scheduled_at) {
+static uint32_t add_event(uint8_t slot_id, time_t scheduled_at) {
   for (uint16_t i = 0; i < s_state.event_count; i++) {
     if (
       s_state.events[i].slot_id == slot_id
       && s_state.events[i].scheduled_at == scheduled_at
-    ) return i;
+    ) return s_state.events[i].sequence;
   }
   if (s_state.event_count == EVENT_LIMIT) {
     memmove(
@@ -176,8 +283,8 @@ static int16_t add_event(uint8_t slot_id, time_t scheduled_at) {
   event->scheduled_at = scheduled_at;
   event->outcome = OUTCOME_NO_RESPONSE;
   s_state.event_count++;
-  save_state();
-  return s_state.event_count - 1;
+  (void)save_state();
+  return event->sequence;
 }
 
 static void format_time(ReminderSlot *slot, char *buffer, size_t size) {
@@ -263,7 +370,9 @@ static void show_main(const char *note) {
     s_footer_text,
     sizeof(s_footer_text),
     "%s",
-    note ? note : s_schedule_error ? "Alarm schedule failed" : "Hold Select: phone report"
+    s_storage_error
+      ? "Storage save failed"
+      : note ? note : s_schedule_error ? "Alarm schedule failed" : "Hold Select: phone report"
   );
   set_footer_text();
 }
@@ -300,7 +409,10 @@ static void show_alert(uint8_t slot_id) {
 static void handle_wakeup(uint8_t slot_id) {
   if (slot_id >= SLOT_COUNT) return;
   ReminderSlot *slot = &s_state.slots[slot_id];
-  s_active_event = add_event(slot_id, slot->scheduled_at ? slot->scheduled_at : time(NULL));
+  s_active_event_sequence = add_event(
+    slot_id,
+    slot->scheduled_at ? slot->scheduled_at : time(NULL)
+  );
   slot->wakeup_id = -1;
   slot->scheduled_at = 0;
   schedule_next();
@@ -440,11 +552,23 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
 }
 
 static void record_outcome(Outcome outcome) {
-  if (s_active_event < 0 || s_active_event >= s_state.event_count) return;
-  s_state.events[s_active_event].outcome = outcome;
-  s_state.events[s_active_event].answered_at = time(NULL);
-  save_state();
-  s_active_event = -1;
+  if (!s_active_event_sequence) return;
+  ReminderEvent *active_event = NULL;
+  for (uint16_t i = 0; i < s_state.event_count; i++) {
+    if (s_state.events[i].sequence == s_active_event_sequence) {
+      active_event = &s_state.events[i];
+      break;
+    }
+  }
+  if (!active_event) {
+    s_active_event_sequence = 0;
+    show_main("Reminder not found");
+    return;
+  }
+  active_event->outcome = outcome;
+  active_event->answered_at = time(NULL);
+  (void)save_state();
+  s_active_event_sequence = 0;
   show_main(outcome == OUTCOME_TAKEN ? "Taken recorded" : "Skipped recorded");
 }
 
@@ -525,7 +649,7 @@ static void back_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_EDIT) {
     show_main("Edit cancelled");
   } else if (s_screen == SCREEN_ALERT) {
-    s_active_event = -1;
+    s_active_event_sequence = 0;
     window_stack_pop(true);
   } else {
     window_stack_pop(true);
@@ -576,7 +700,7 @@ static void init(void) {
   app_message_register_inbox_received(inbox_received);
   app_message_register_outbox_sent(outbox_sent);
   app_message_register_outbox_failed(outbox_failed);
-  app_message_open(128, 512);
+  app_message_open(128, app_message_outbox_size_maximum());
   wakeup_service_subscribe(wakeup_handler);
 
   if (launched_by_wakeup && launch_cookie >= 0 && launch_cookie < SLOT_COUNT) {

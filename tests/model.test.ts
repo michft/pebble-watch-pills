@@ -24,12 +24,23 @@ test("creates four enabled default slots", () => {
 });
 
 test("schedules later today when enough lead time remains", () => {
-  const now = new Date(2026, 6, 19, 7, 0, 0).getTime();
-  const scheduled = new Date(nextOccurrenceMs(8, 30, now));
+  const previousTimezone = process.env.TZ;
+  process.env.TZ = "America/New_York";
+  try {
+    const now = new Date(2026, 2, 8, 0, 30, 0).getTime();
+    const scheduled = new Date(nextOccurrenceMs(8, 30, now));
 
-  assert.equal(scheduled.getDate(), 19);
-  assert.equal(scheduled.getHours(), 8);
-  assert.equal(scheduled.getMinutes(), 30);
+    assert.equal(scheduled.getDate(), 8);
+    assert.equal(scheduled.getHours(), 8);
+    assert.equal(scheduled.getMinutes(), 30);
+    assert.equal(scheduled.getTime() - now, 7 * 60 * 60 * 1000);
+  } finally {
+    if (previousTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = previousTimezone;
+    }
+  }
 });
 
 test("schedules next local calendar day after time passes", () => {
@@ -96,6 +107,33 @@ test("rejects invalid stored slot data", () => {
   const serialized = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
   const slots = serialized.slots as Array<Record<string, unknown>>;
   slots[0].hour = 99;
+
+  assert.equal(decodeAppState(serialized), null);
+});
+
+test("drops persisted events with inconsistent outcome timestamps", () => {
+  const state = createDefaultState(1_000, 0.25);
+  const event = ensureReminderEvent(state, 0, 10_000);
+  event.outcome = "taken";
+  event.answeredAt = 11_000;
+  const decodedValid = decodeAppState(JSON.parse(JSON.stringify(state)));
+  assert.deepEqual(decodedValid?.events, [event]);
+
+  event.answeredAt = null;
+
+  const decodedTaken = decodeAppState(JSON.parse(JSON.stringify(state)));
+  assert.deepEqual(decodedTaken?.events, []);
+
+  event.outcome = "no_response";
+  event.answeredAt = 11_000;
+  const decodedNoResponse = decodeAppState(JSON.parse(JSON.stringify(state)));
+  assert.deepEqual(decodedNoResponse?.events, []);
+});
+
+test("rejects persisted history above the watch limit", () => {
+  const state = createDefaultState(1_000, 0.25);
+  const serialized = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
+  serialized.events = Array.from({ length: 129 }, () => ({}));
 
   assert.equal(decodeAppState(serialized), null);
 });

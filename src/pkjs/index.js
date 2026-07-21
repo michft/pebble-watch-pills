@@ -200,6 +200,7 @@ Pebble.addEventListener("webviewclosed", function (event) {
     if (response.action === "clear_history") {
       var state = loadState();
       state.events = [];
+      state.droppedEvents = 0;
       state.warning = null;
       saveState(state);
     }
