@@ -1,10 +1,14 @@
 #include <pebble.h>
 
 #define SLOT_COUNT 4
+#define MAIN_VISIBLE_ROWS 3
+#define MAIN_ADD_ITEM SLOT_COUNT
 #define EVENT_LIMIT 128
 #define STATE_VERSION 2
 #define PERSIST_KEY_META 1
 #define PERSIST_KEY_EVENTS_BASE 2
+#define REMINDER_DURATION_SECONDS (5 * 60)
+#define REMINDER_BUZZ_INTERVAL_MS (30 * 1000)
 
 typedef enum {
   SCREEN_MAIN,
@@ -71,7 +75,11 @@ static Screen s_screen = SCREEN_MAIN;
 static uint8_t s_selected_slot;
 static uint8_t s_edit_field;
 static ReminderSlot s_edit_slot;
+static uint8_t s_main_selection;
+static uint8_t s_main_scroll_offset;
 static uint32_t s_active_event_sequence;
+static AppTimer *s_alert_timer;
+static time_t s_alert_ends_at;
 static bool s_select_long;
 static bool s_syncing;
 static bool s_schedule_error;
@@ -417,13 +425,89 @@ static void set_row(uint8_t index, bool selected, const char *label, const char 
 }
 
 /**
+ * Applies the three-row scrolling layout used by the reminder list.
+ */
+static void layout_main_rows(void) {
+  for (uint8_t i = 0; i < MAIN_VISIBLE_ROWS; i++) {
+    Layer *layer = text_layer_get_layer(s_rows[i]);
+    GRect frame = layer_get_frame(layer);
+    layer_set_frame(layer, GRect(frame.origin.x, 46 + i * 50, frame.size.w, 44));
+    layer_set_hidden(layer, false);
+  }
+  layer_set_hidden(text_layer_get_layer(s_rows[3]), true);
+}
+
+/**
+ * Restores the four-row layout used by edit, alert, and sync screens.
+ */
+static void layout_detail_rows(void) {
+  for (uint8_t i = 0; i < SLOT_COUNT; i++) {
+    Layer *layer = text_layer_get_layer(s_rows[i]);
+    GRect frame = layer_get_frame(layer);
+    layer_set_frame(layer, GRect(frame.origin.x, 46 + i * 38, frame.size.w, 36));
+    layer_set_hidden(layer, false);
+  }
+}
+
+/**
+ * Clears a row and its selection styling.
+ *
+ * @param index Row index to clear.
+ */
+static void clear_row(uint8_t index) {
+  text_layer_set_text(s_rows[index], "");
+  text_layer_set_background_color(s_rows[index], GColorClear);
+  text_layer_set_text_color(s_rows[index], GColorBlack);
+}
+
+/**
+ * Builds the main-screen list from enabled reminders and an optional add item.
+ *
+ * @param items Buffer receiving slot identifiers or MAIN_ADD_ITEM.
+ * @returns Number of items in the list.
+ */
+static uint8_t build_main_items(uint8_t items[SLOT_COUNT + 1]) {
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < SLOT_COUNT; i++) {
+    if (s_state.slots[i].enabled) items[count++] = i;
+  }
+  if (count < SLOT_COUNT) items[count++] = MAIN_ADD_ITEM;
+  return count;
+}
+
+/**
+ * Renders one reminder or add item in the main-screen viewport.
+ *
+ * @param row Visible row index.
+ * @param item Slot identifier or MAIN_ADD_ITEM.
+ * @param selected Whether the item is selected.
+ */
+static void render_main_item(uint8_t row, uint8_t item, bool selected) {
+  if (item == MAIN_ADD_ITEM) {
+    set_row(row, selected, "+", "ADD REMINDER");
+    return;
+  }
+
+  char time_buffer[16];
+  char label[16];
+  format_time(&s_state.slots[item], time_buffer, sizeof(time_buffer));
+  snprintf(label, sizeof(label), "Pill %u", item + 1);
+  set_row(row, selected, label, time_buffer);
+}
+
+static void show_main(const char *note);
+
+/**
  * Applies selection styling to the visible rows for the current screen.
  */
 static void refresh_selection(void) {
+  if (s_screen == SCREEN_MAIN) {
+    show_main(NULL);
+    return;
+  }
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     bool selected = false;
-    if (s_screen == SCREEN_MAIN) selected = i == s_selected_slot;
-    else if (s_screen == SCREEN_EDIT) selected = i == s_edit_field;
+    if (s_screen == SCREEN_EDIT) selected = i == s_edit_field;
     else if (s_screen == SCREEN_ALERT) selected = i == 1;
     text_layer_set_background_color(s_rows[i], selected ? GColorOxfordBlue : GColorClear);
     text_layer_set_text_color(s_rows[i], selected ? GColorWhite : GColorBlack);
@@ -438,16 +522,36 @@ static void refresh_selection(void) {
  */
 static void show_main(const char *note) {
   s_screen = SCREEN_MAIN;
-  snprintf(s_header_text, sizeof(s_header_text), "Pill Reminder");
+  layout_main_rows();
+  snprintf(s_header_text, sizeof(s_header_text), "Pill Reminders");
   set_header_text();
-  for (uint8_t i = 0; i < SLOT_COUNT; i++) {
-    char time_buffer[16];
-    char value[24];
-    char label[16];
-    format_time(&s_state.slots[i], time_buffer, sizeof(time_buffer));
-    snprintf(value, sizeof(value), "%s %s", time_buffer, s_state.slots[i].enabled ? "ON" : "OFF");
-    snprintf(label, sizeof(label), "Pill %u", i + 1);
-    set_row(i, i == s_selected_slot, label, value);
+
+  uint8_t items[SLOT_COUNT + 1];
+  uint8_t item_count = build_main_items(items);
+  if (s_main_selection >= item_count) s_main_selection = item_count - 1;
+  if (item_count <= MAIN_VISIBLE_ROWS) {
+    s_main_scroll_offset = 0;
+  } else if (s_main_selection < s_main_scroll_offset) {
+    s_main_scroll_offset = s_main_selection;
+  } else if (s_main_selection >= s_main_scroll_offset + MAIN_VISIBLE_ROWS) {
+    s_main_scroll_offset = s_main_selection - MAIN_VISIBLE_ROWS + 1;
+  }
+
+  for (uint8_t row = 0; row < MAIN_VISIBLE_ROWS; row++) clear_row(row);
+  bool pin_add_to_bottom = item_count <= MAIN_VISIBLE_ROWS
+    && items[item_count - 1] == MAIN_ADD_ITEM;
+  uint8_t reminder_count = pin_add_to_bottom ? item_count - 1 : item_count;
+  for (uint8_t row = 0; row < MAIN_VISIBLE_ROWS; row++) {
+    uint8_t item_index = s_main_scroll_offset + row;
+    if (item_index >= reminder_count) break;
+    render_main_item(row, items[item_index], item_index == s_main_selection);
+  }
+  if (pin_add_to_bottom) {
+    render_main_item(
+      MAIN_VISIBLE_ROWS - 1,
+      MAIN_ADD_ITEM,
+      s_main_selection == item_count - 1
+    );
   }
   snprintf(
     s_footer_text,
@@ -465,6 +569,7 @@ static void show_main(const char *note) {
  */
 static void show_edit(void) {
   s_screen = SCREEN_EDIT;
+  layout_detail_rows();
   snprintf(s_header_text, sizeof(s_header_text), "Edit Pill %u", s_selected_slot + 1);
   set_header_text();
   char value[20];
@@ -485,6 +590,7 @@ static void show_edit(void) {
  */
 static void show_alert(uint8_t slot_id) {
   s_screen = SCREEN_ALERT;
+  layout_detail_rows();
   char time_buffer[16];
   format_time(&s_state.slots[slot_id], time_buffer, sizeof(time_buffer));
   snprintf(s_header_text, sizeof(s_header_text), "TAKE PILL %u", slot_id + 1);
@@ -498,6 +604,66 @@ static void show_alert(uint8_t slot_id) {
 }
 
 /**
+ * Stops the active reminder timer and any queued vibration.
+ */
+static void stop_alert_buzz(void) {
+  if (s_alert_timer) {
+    app_timer_cancel(s_alert_timer);
+    s_alert_timer = NULL;
+  }
+  s_alert_ends_at = 0;
+  vibes_cancel();
+}
+
+/**
+ * Vibrates with the reminder alert pattern.
+ */
+static void buzz_alert(void) {
+  static const uint32_t segments[] = {250, 120, 250, 120, 700};
+  VibePattern pattern = {.durations = segments, .num_segments = ARRAY_LENGTH(segments)};
+  vibes_enqueue_custom_pattern(pattern);
+}
+
+/**
+ * Repeats the alert vibration until the five-minute reminder window ends.
+ *
+ * @param context Timer context, unused.
+ */
+static void alert_timer_callback(void *context) {
+  s_alert_timer = NULL;
+  if (s_screen != SCREEN_ALERT || !s_active_event_sequence) {
+    s_alert_ends_at = 0;
+    return;
+  }
+  if (time(NULL) >= s_alert_ends_at) {
+    s_alert_ends_at = 0;
+    s_active_event_sequence = 0;
+    show_main("No response recorded");
+    return;
+  }
+  buzz_alert();
+  s_alert_timer = app_timer_register(
+    REMINDER_BUZZ_INTERVAL_MS,
+    alert_timer_callback,
+    NULL
+  );
+}
+
+/**
+ * Starts an immediate vibration followed by repeats for five minutes.
+ */
+static void start_alert_buzz(void) {
+  stop_alert_buzz();
+  s_alert_ends_at = time(NULL) + REMINDER_DURATION_SECONDS;
+  buzz_alert();
+  s_alert_timer = app_timer_register(
+    REMINDER_BUZZ_INTERVAL_MS,
+    alert_timer_callback,
+    NULL
+  );
+}
+
+/**
  * Handles a reminder wakeup by recording the event, scheduling the next reminder,
  * vibrating the watch, and displaying the reminder alert.
  *
@@ -505,6 +671,7 @@ static void show_alert(uint8_t slot_id) {
  */
 static void handle_wakeup(uint8_t slot_id) {
   if (slot_id >= SLOT_COUNT) return;
+  stop_alert_buzz();
   ReminderSlot *slot = &s_state.slots[slot_id];
   s_active_event_sequence = add_event(
     slot_id,
@@ -513,10 +680,8 @@ static void handle_wakeup(uint8_t slot_id) {
   slot->wakeup_id = -1;
   slot->scheduled_at = 0;
   schedule_next();
-  static const uint32_t segments[] = {250, 120, 250, 120, 700};
-  VibePattern pattern = {.durations = segments, .num_segments = ARRAY_LENGTH(segments)};
-  vibes_enqueue_custom_pattern(pattern);
   show_alert(slot_id);
+  start_alert_buzz();
 }
 
 /**
@@ -667,6 +832,7 @@ static void start_sync(void) {
   s_syncing = true;
   s_sync_index = 0;
   s_screen = SCREEN_SYNC;
+  layout_detail_rows();
   snprintf(s_header_text, sizeof(s_header_text), "Pill Reminder");
   set_header_text();
   set_row(0, false, "Phone", "REPORT");
@@ -695,6 +861,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
  */
 static void record_outcome(Outcome outcome) {
   if (!s_active_event_sequence) return;
+  stop_alert_buzz();
   ReminderEvent *active_event = NULL;
   for (uint16_t i = 0; i < s_state.event_count; i++) {
     if (s_state.events[i].sequence == s_active_event_sequence) {
@@ -729,8 +896,23 @@ static void select_click(ClickRecognizerRef recognizer, void *context) {
     return;
   }
   if (s_screen == SCREEN_MAIN) {
+    uint8_t items[SLOT_COUNT + 1];
+    uint8_t item_count = build_main_items(items);
+    if (s_main_selection >= item_count) s_main_selection = item_count - 1;
+    uint8_t selected_item = items[s_main_selection];
+    if (selected_item == MAIN_ADD_ITEM) {
+      for (uint8_t i = 0; i < SLOT_COUNT; i++) {
+        if (!s_state.slots[i].enabled) {
+          s_selected_slot = i;
+          break;
+        }
+      }
+    } else {
+      s_selected_slot = selected_item;
+    }
     s_edit_slot = s_state.slots[s_selected_slot];
-    s_edit_field = 0;
+    if (selected_item == MAIN_ADD_ITEM) s_edit_slot.enabled = true;
+    s_edit_field = selected_item == MAIN_ADD_ITEM ? 1 : 0;
     show_edit();
   } else if (s_screen == SCREEN_EDIT) {
     if (s_edit_field == 0) {
@@ -782,7 +964,9 @@ static void select_long_click(ClickRecognizerRef recognizer, void *context) {
  */
 static void up_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_MAIN) {
-    s_selected_slot = (s_selected_slot + SLOT_COUNT - 1) % SLOT_COUNT;
+    uint8_t items[SLOT_COUNT + 1];
+    uint8_t item_count = build_main_items(items);
+    s_main_selection = (s_main_selection + item_count - 1) % item_count;
     refresh_selection();
   } else if (s_screen == SCREEN_EDIT) {
     s_edit_field = (s_edit_field + 3) % 4;
@@ -800,7 +984,9 @@ static void down_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_ALERT) {
     record_outcome(OUTCOME_SKIPPED);
   } else if (s_screen == SCREEN_MAIN) {
-    s_selected_slot = (s_selected_slot + 1) % SLOT_COUNT;
+    uint8_t items[SLOT_COUNT + 1];
+    uint8_t item_count = build_main_items(items);
+    s_main_selection = (s_main_selection + 1) % item_count;
     refresh_selection();
   } else if (s_screen == SCREEN_EDIT) {
     s_edit_field = (s_edit_field + 1) % 4;
@@ -818,6 +1004,7 @@ static void back_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_EDIT) {
     show_main("Edit cancelled");
   } else if (s_screen == SCREEN_ALERT) {
+    stop_alert_buzz();
     s_active_event_sequence = 0;
     window_stack_pop(true);
   } else {
@@ -879,7 +1066,7 @@ static void init(void) {
     s_rows[i] = make_text_layer(GRect(4, 46 + i * 38, bounds.size.w - 8, 36), fonts_get_system_font(FONT_KEY_GOTHIC_20_BOLD), GTextAlignmentLeft);
     layer_add_child(root, text_layer_get_layer(s_rows[i]));
   }
-  s_footer = make_text_layer(GRect(4, 198, bounds.size.w - 8, 32), fonts_get_system_font(FONT_KEY_GOTHIC_16), GTextAlignmentCenter);
+  s_footer = make_text_layer(GRect(4, 196, bounds.size.w - 8, 32), fonts_get_system_font(FONT_KEY_GOTHIC_16), GTextAlignmentCenter);
   layer_add_child(root, text_layer_get_layer(s_footer));
 
   app_message_register_inbox_received(inbox_received);
@@ -903,6 +1090,7 @@ static void init(void) {
  * Releases the window and text layers used by the application.
  */
 static void deinit(void) {
+  stop_alert_buzz();
   for (uint8_t i = 0; i < SLOT_COUNT; i++) text_layer_destroy(s_rows[i]);
   text_layer_destroy(s_header);
   text_layer_destroy(s_footer);

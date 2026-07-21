@@ -1,12 +1,14 @@
 # Pill Reminder for Pebble Time 2
 
-Four daily reminder slots, explicit self-reported outcomes, and phone-local reporting for Pebble Time 2 (`emery`).
+Up to four daily reminder slots, explicit self-reported outcomes, and phone-local reporting for Pebble Time 2 (`emery`).
 
 ## Features
 
-- Four independently enabled daily times.
+- Three-row scrolling reminder list with up to four independently enabled daily times.
+- Bottom `+ Add reminder` item whenever unused reminder capacity remains.
 - Physical-button operation.
 - Persistent rolling wakeup while app is closed.
+- Repeated vibration for a five-minute reminder window.
 - `Taken`, `Skipped`, and `No response` outcomes kept distinct.
 - Offline history with duplicate-safe phone sync.
 - Today, 7-day, and 30-day report inside rePebble mobile app.
@@ -60,8 +62,8 @@ pebble install --emulator emery
 
 Main screen:
 
-- Up/Down: choose slot.
-- Select: edit.
+- Up/Down: scroll enabled reminders and the add item.
+- Select: edit a reminder, or open a new reminder from `+ Add reminder`.
 - Hold Select: send report to phone now.
 
 Edit screen:
@@ -75,6 +77,7 @@ Reminder screen:
 - Select or `Taken`: record self-reported taken.
 - Down or `Skipped`: record skipped.
 - Back: leave no response.
+- The watch repeats its vibration every 30 seconds for five minutes, then closes the alert as `No response`.
 
 ## Phone report
 

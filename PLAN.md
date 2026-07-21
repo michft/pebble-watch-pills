@@ -8,7 +8,7 @@ Date: 2026-07-19
 
 ## Product
 
-Small watch-first pill reminder with four independent daily slots and a phone-local adherence report.
+Small watch-first pill reminder with up to four independent daily slots and a phone-local adherence report.
 
 Each slot has:
 
@@ -30,9 +30,10 @@ App never infers consumption, gives dosage advice, or calls report a medical rec
 ## Delivered scope
 
 - four persistent watch-editable slots
+- three-row scrolling list of enabled reminders with an add-reminder item
 - local-time daily scheduling
 - one rolling OS wakeup for earliest enabled slot
-- wake vibration and full-screen outcome prompt
+- repeating five-minute wake vibration and full-screen outcome prompt
 - two-minute minimum gap between enabled slots
 - elapsed-reminder recovery on next app launch
 - newest 128 watch events with visible dropped-event warning on phone
@@ -79,8 +80,8 @@ Native C replaced an initial Alloy/Piu prototype. Emulator testing found Alloy m
 
 ### Main screen
 
-- Up/Down chooses one of four slots.
-- Select opens editor.
+- Up/Down scrolls enabled reminders, three visible at a time.
+- Select opens an enabled reminder or the `+ Add reminder` editor item.
 - Long Select sends report data to phone.
 - Back exits.
 - Times follow watch 12/24-hour preference.
@@ -99,6 +100,7 @@ Native C replaced an initial Alloy/Piu prototype. Emulator testing found Alloy m
 - Select changes same event to `Taken` and records answer time.
 - Down changes same event to `Skipped` and records answer time.
 - Back leaves `No response` unchanged.
+- Vibration repeats every 30 seconds for five minutes; expiry leaves `No response` unchanged and returns to the main list.
 - Next occurrence is scheduled before waiting for response.
 
 ## Scheduling
@@ -111,7 +113,7 @@ On fire:
 2. Clear fired occurrence.
 3. Recalculate all next occurrences.
 4. Register new earliest wakeup.
-5. Vibrate and show alert.
+5. Show the alert and repeat vibration for up to five minutes.
 
 On normal launch, any saved occurrence already in past becomes one deduplicated `No response` event before schedule reconciliation.
 
