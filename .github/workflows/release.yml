@@ -18,8 +18,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
-      REBBLE_APP_ID: 384b30aa3eeb468ba63a4f7e
-      REBBLE_ACCESS_TOKEN: ${{ secrets.REBBLE_ACCESS_TOKEN }}
+      PEBBLE_FIREBASE_REFRESH_TOKEN: ${{ secrets.PEBBLE_FIREBASE_REFRESH_TOKEN }}
 
     steps:
       - name: Check out source
@@ -55,8 +54,8 @@ jobs:
 
       - name: Check deployment settings
         run: |
-          if [ -z "${REBBLE_ACCESS_TOKEN}" ]; then
-            echo "Set the REBBLE_ACCESS_TOKEN repository secret." >&2
+          if [ -z "${PEBBLE_FIREBASE_REFRESH_TOKEN}" ]; then
+            echo "Set the PEBBLE_FIREBASE_REFRESH_TOKEN repository secret." >&2
             exit 1
           fi
 
@@ -92,16 +91,31 @@ jobs:
             exit 1
           fi
 
-      - name: Upload release to Pebble app store
+      - name: Refresh Pebble app-store token
+        run: |
+          TOKEN_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "grant_type=refresh_token" \
+            --data-urlencode "refresh_token=${PEBBLE_FIREBASE_REFRESH_TOKEN}" \
+            "https://securetoken.googleapis.com/v1/token?key=AIzaSyBZ9Cdvwwv9At2lPmc8TxyyEqSXGXejGvc")"
+          PEBBLE_FIREBASE_ID_TOKEN="$(printf '%s' "${TOKEN_RESPONSE}" | node -e \
+            'let value=""; process.stdin.on("data", chunk => value += chunk); process.stdin.on("end", () => { const token = JSON.parse(value).id_token; if (!token) throw new Error("Firebase response has no id_token"); process.stdout.write(token); });')"
+          echo "::add-mask::${PEBBLE_FIREBASE_ID_TOKEN}"
+          echo "PEBBLE_FIREBASE_ID_TOKEN=${PEBBLE_FIREBASE_ID_TOKEN}" >> "${GITHUB_ENV}"
+
+      - name: Publish release to Pebble app store
         env:
           RELEASE_NOTES: ${{ steps.release.outputs.notes }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          test -s build/pebble-pills.pbw
-          curl --fail-with-body --retry 3 \
-            --header "Authorization: Bearer ${REBBLE_ACCESS_TOKEN}" \
-            --form-string "release_notes=${RELEASE_NOTES}" \
-            --form "pbw=@build/pebble-pills.pbw;type=application/octet-stream" \
-            "https://appstore-api.rebble.io/api/dp/app/${REBBLE_APP_ID}/release"
+          pebble publish \
+            --api-base "https://appstore-api.repebble.com" \
+            --release-notes "${RELEASE_NOTES}" \
+            --version "${RELEASE_VERSION}" \
+            --is-published \
+            --no-gif-all-platforms \
+            --non-interactive
 
       - name: Create GitHub Release
         env:
