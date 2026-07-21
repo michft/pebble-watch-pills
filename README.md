@@ -94,6 +94,9 @@ If authentication is revoked, run `pebble login` and the `jq | gh secret set`
 command again. A reused version fails before build; bump `package.json` and add
 its changelog entry before retrying.
 
+CodeRabbit reviews are debounced for 20 seconds after a pull request is opened
+or updated. A newer update cancels and restarts the timer.
+
 ## Install
 
 CloudPebble project 22199 is the primary watch deployment method. In the
