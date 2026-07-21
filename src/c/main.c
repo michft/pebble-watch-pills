@@ -432,9 +432,9 @@ static void refresh_selection(void) {
 }
 
 /**
- * Displays the main screen with the configured reminder slots and status message.
+ * Displays the reminder slots and an appropriate status message on the main screen.
  *
- * @param note Optional footer message to display when no storage or scheduling error is active.
+ * @param note Optional status message to display when storage and scheduling are operating normally.
  */
 static void show_main(const char *note) {
   s_screen = SCREEN_MAIN;
@@ -520,9 +520,9 @@ static void handle_wakeup(uint8_t slot_id) {
 }
 
 /**
- * Handles a wakeup notification for the reminder slot identified by the cookie.
+ * Processes a wakeup notification for the reminder slot identified by the cookie.
  *
- * @param id Wakeup identifier.
+ * @param id Wakeup identifier, which is ignored.
  * @param cookie Reminder slot index associated with the wakeup.
  */
 static void wakeup_handler(WakeupId id, int32_t cookie) {
@@ -585,7 +585,7 @@ static void send_payload(int32_t type, const char *payload) {
 }
 
 /**
- * Sends the next synchronisation payload or completes the synchronisation process.
+ * Sends the next configuration, event, or completion payload for the active synchronisation.
  */
 static void send_sync_item(void) {
   static char payload[500];
@@ -791,7 +791,7 @@ static void up_click(ClickRecognizerRef recognizer, void *context) {
 }
 
 /**
- * Handles a DOWN button press according to the current screen.
+ * Handles a DOWN button press for the active screen.
  *
  * @param recognizer Button press recogniser.
  * @param context Callback context.
@@ -837,11 +837,11 @@ static void click_config_provider(void *context) {
 }
 
 /**
- * Creates a configured text layer.
+ * Creates a text layer with the specified frame, font, alignment, and default colours.
  * @param frame The layer's frame.
  * @param font The font used to render text.
  * @param alignment The text alignment.
- * @returns The created text layer.
+ * @returns The configured text layer.
  */
 static TextLayer *make_text_layer(GRect frame, GFont font, GTextAlignment alignment) {
   TextLayer *layer = text_layer_create(frame);
@@ -910,9 +910,7 @@ static void deinit(void) {
 }
 
 /**
- * Initialises the app, runs its event loop, and releases its resources on exit.
- *
- * @return Exit status of the application.
+ * Starts the application, runs its event loop, and releases resources when the loop exits.
  */
 int main(void) {
   init();

@@ -136,11 +136,11 @@ export function createDefaultState(
 }
 
 /**
- * Decodes and validates a reminder slot with the expected identifier.
+ * Decodes and validates a reminder slot for the expected identifier.
  *
  * @param value - The value to decode.
- * @param expectedId - The slot identifier the value must contain.
- * @returns A normalised reminder slot, or `null` if validation fails.
+ * @param expectedId - The identifier the slot must contain.
+ * @returns A normalised reminder slot, or `null` when the value is invalid.
  */
 function decodeSlot(value: unknown, expectedId: SlotId): ReminderSlot | null {
   if (!isRecord(value) || value.id !== expectedId) {
@@ -373,9 +373,10 @@ export function enabledSlotsTooClose(slots: ReminderSlot[]): boolean {
 }
 
 /**
- * Retrieves the event for a slot and scheduled time, creating it when necessary.
+ * Finds or creates the reminder event for a slot and scheduled time.
  *
  * @param state - The application state to search and update
+ * @param slotId - The reminder slot associated with the event
  * @param scheduledAt - The event's scheduled timestamp
  * @returns The existing or newly created reminder event
  */
@@ -408,10 +409,10 @@ export function ensureReminderEvent(
 }
 
 /**
- * Records a response outcome and the time it was answered for a reminder event.
+ * Records the selected outcome and response time for a reminder event.
  *
  * @param event - The reminder event to update
- * @param outcome - The response outcome
+ * @param outcome - The selected response outcome
  * @param answeredAt - The timestamp when the reminder was answered
  */
 export function updateReminderOutcome(
