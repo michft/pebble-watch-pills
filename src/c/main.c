@@ -1063,10 +1063,10 @@ static void init(void) {
   text_layer_set_text_color(s_header, GColorWhite);
   layer_add_child(root, text_layer_get_layer(s_header));
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
-    s_rows[i] = make_text_layer(GRect(4, 46 + i * 38, bounds.size.w - 8, 36), fonts_get_system_font(FONT_KEY_GOTHIC_20_BOLD), GTextAlignmentLeft);
+    s_rows[i] = make_text_layer(GRect(4, 46 + i * 38, bounds.size.w - 8, 36), fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), GTextAlignmentLeft);
     layer_add_child(root, text_layer_get_layer(s_rows[i]));
   }
-  s_footer = make_text_layer(GRect(4, 196, bounds.size.w - 8, 32), fonts_get_system_font(FONT_KEY_GOTHIC_16), GTextAlignmentCenter);
+  s_footer = make_text_layer(GRect(4, 196, bounds.size.w - 8, 32), fonts_get_system_font(FONT_KEY_GOTHIC_18), GTextAlignmentCenter);
   layer_add_child(root, text_layer_get_layer(s_footer));
 
   app_message_register_inbox_received(inbox_received);
