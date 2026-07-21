@@ -1,7 +1,7 @@
 {
   "name": "pebble-pills",
   "author": "mt",
-  "version": "1.0.0",
+  "version": "0.1.2",
   "keywords": [
     "pebble-app"
   ],
@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "pebble build --watch",
     "build": "pebble build",
+    "release:check": "node scripts/release-metadata.js",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.ts tests/*.test.js"
   },
   "pebble": {

@@ -43,9 +43,52 @@ pnpm build
 
 Package output: `build/pebble-pills.pbw`.
 
+## CloudPebble deployment
+
+The active browser project is
+[CloudPebble project 22199](https://cloudpebble.repebble.com/ide/project/22199#).
+Use it to build the current GitHub code and install it on the watch or Emery
+emulator:
+
+1. Sign in to CloudPebble using the Google account that owns the project.
+2. Open project 22199 and sync the latest `main` through GitHub Repo Sync.
+3. Build the project.
+4. Run it using the phone target for the physical watch, or the Emery emulator
+   for browser testing.
+
+Phone deployment requires Cloud Dev Connection to be linked in CloudPebble
+Settings and enabled in the rePebble iOS app. CloudPebble handles development
+builds and watch installation; publishing a new app-store version remains the
+separate release workflow below.
+
+## Releases
+
+The version in `package.json` is the release source of truth. Before merging a
+release to `main`, increment that version and add the matching entry to
+`CHANGELOG.md`. Successful deployments create a matching GitHub Release and
+attach the `.pbw`, providing the release history.
+
+Every push to `main` runs `.github/workflows/release.yml`, tests and builds the
+app, uploads the new release to the Pebble app store, then creates the GitHub
+Release. Configure these GitHub repository settings first:
+
+- Secret `REBBLE_ACCESS_TOKEN`: the bearer access token from a signed-in
+  Rebble Developer Portal session.
+
+The workflow contains the public Developer Portal DB ID
+`384b30aa3eeb468ba63a4f7e`; it is not the PBW UUID.
+
+The portal access token can expire. Replace the secret if deployment returns
+HTTP 401. A reused version fails before build; bump `package.json` and add its
+changelog entry before retrying.
+
 ## Install
 
-In rePebble mobile app: Devices → three-dot menu → Enable Dev Connect → sign into GitHub.
+CloudPebble project 22199 is the primary watch deployment method. In the
+rePebble mobile app: Devices → three-dot menu → Enable Dev Connect → sign into
+GitHub, then use the CloudPebble project's phone target.
+
+For command-line installation instead:
 
 ```sh
 pebble login
