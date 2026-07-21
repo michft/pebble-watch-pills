@@ -86,6 +86,14 @@ static uint8_t s_header_buffer;
 static uint8_t s_row_buffer[SLOT_COUNT];
 static uint8_t s_footer_buffer;
 
+/**
+ * Updates a checksum with the supplied byte data.
+ *
+ * @param checksum Initial checksum value.
+ * @param data Data to incorporate into the checksum.
+ * @param size Number of bytes to process.
+ * @return The updated checksum.
+ */
 static uint32_t checksum_bytes(uint32_t checksum, const void *data, size_t size) {
   const uint8_t *bytes = data;
   for (size_t i = 0; i < size; i++) {
@@ -95,6 +103,12 @@ static uint32_t checksum_bytes(uint32_t checksum, const void *data, size_t size)
   return checksum;
 }
 
+/**
+ * Calculates an integrity checksum for the persisted application state.
+ *
+ * @param state State whose metadata, reminder slots, and stored events are included.
+ * @return Checksum representing the supplied state.
+ */
 static uint32_t state_checksum(const AppState *state) {
   uint32_t checksum = 2166136261u;
   checksum = checksum_bytes(checksum, &state->version, sizeof(state->version));
@@ -112,6 +126,11 @@ static uint32_t state_checksum(const AppState *state) {
   return checksum;
 }
 
+/**
+ * Persists the current reminder settings and event history.
+ *
+ * @return `true` if all state data is saved successfully, `false` otherwise.
+ */
 static bool save_state(void) {
   for (uint16_t offset = 0, chunk = 0; offset < s_state.event_count; chunk++) {
     uint16_t remaining = s_state.event_count - offset;
@@ -151,6 +170,9 @@ static bool save_state(void) {
   return true;
 }
 
+/**
+ * Resets the application state to the default reminder schedule and persists it.
+ */
 static void reset_state(void) {
   memset(&s_state, 0, sizeof(s_state));
   s_state.version = STATE_VERSION;
@@ -166,6 +188,12 @@ static void reset_state(void) {
   (void)save_state();
 }
 
+/**
+ * Restores the application state from persistent storage.
+ *
+ * Falls back to a newly initialised state when stored metadata, event data, or
+ * the integrity checksum is invalid.
+ */
 static void load_state(void) {
   PersistMeta meta;
   bool restored = persist_get_size(PERSIST_KEY_META) == (int)sizeof(meta)
@@ -205,6 +233,13 @@ static void load_state(void) {
   }
 }
 
+/**
+ * Determines the next scheduled occurrence of a reminder slot.
+ *
+ * @param slot Reminder slot containing the target hour and minute.
+ * @param now Current local time used to calculate the next occurrence.
+ * @returns The next scheduled local date and time for the slot.
+ */
 static time_t next_time(ReminderSlot *slot, time_t now) {
   struct tm candidate = *localtime(&now);
   candidate.tm_hour = slot->hour;
@@ -218,6 +253,12 @@ static time_t next_time(ReminderSlot *slot, time_t now) {
   return result;
 }
 
+/**
+ * Determines whether any enabled reminder slots are scheduled within two minutes of each other.
+ *
+ * @param proposed Reminder slot configuration to assess.
+ * @returns `true` if any enabled slots are scheduled less than two minutes apart, `false` otherwise.
+ */
 static bool times_too_close(ReminderSlot proposed[SLOT_COUNT]) {
   for (uint8_t left = 0; left < SLOT_COUNT; left++) {
     if (!proposed[left].enabled) continue;
@@ -233,6 +274,13 @@ static bool times_too_close(ReminderSlot proposed[SLOT_COUNT]) {
   return false;
 }
 
+/**
+ * Reschedules the next enabled reminder and updates its wakeup state.
+ *
+ * Cancels existing wakeups, recalculates each slot's next scheduled time, and
+ * persists the updated scheduling state. Sets the scheduling error flag when
+ * the next wakeup cannot be scheduled.
+ */
 static void schedule_next(void) {
   time_t now = time(NULL);
   int8_t earliest = -1;
@@ -260,6 +308,13 @@ static void schedule_next(void) {
   (void)save_state();
 }
 
+/**
+ * Records a reminder event unless an event with the same slot and scheduled time already exists.
+ *
+ * @param slot_id Identifier of the reminder slot.
+ * @param scheduled_at Scheduled date and time of the reminder.
+ * @returns The existing or newly assigned event sequence number.
+ */
 static uint32_t add_event(uint8_t slot_id, time_t scheduled_at) {
   for (uint16_t i = 0; i < s_state.event_count; i++) {
     if (
@@ -287,6 +342,12 @@ static uint32_t add_event(uint8_t slot_id, time_t scheduled_at) {
   return event->sequence;
 }
 
+/**
+ * Formats a reminder slot's time according to the watch's clock preference.
+ * @param slot Reminder slot containing the time to format.
+ * @param buffer Buffer that receives the formatted time.
+ * @param size Size of the output buffer in bytes.
+ */
 static void format_time(ReminderSlot *slot, char *buffer, size_t size) {
   if (clock_is_24h_style()) {
     snprintf(buffer, size, "%02u:%02u", slot->hour, slot->minute);
@@ -304,6 +365,9 @@ static void format_time(ReminderSlot *slot, char *buffer, size_t size) {
   }
 }
 
+/**
+ * Updates the header layer with the current header text.
+ */
 static void set_header_text(void) {
   s_header_buffer ^= 1;
   snprintf(
@@ -315,6 +379,9 @@ static void set_header_text(void) {
   text_layer_set_text(s_header, s_header_buffers[s_header_buffer]);
 }
 
+/**
+ * Applies the current footer text to the footer layer.
+ */
 static void set_footer_text(void) {
   s_footer_buffer ^= 1;
   snprintf(
@@ -326,6 +393,14 @@ static void set_footer_text(void) {
   text_layer_set_text(s_footer, s_footer_buffers[s_footer_buffer]);
 }
 
+/**
+ * Updates a row's text and selection colours.
+ *
+ * @param index Row index to update.
+ * @param selected Whether the row should use selected styling.
+ * @param label Text displayed as the row label.
+ * @param value Text displayed as the row value.
+ */
 static void set_row(uint8_t index, bool selected, const char *label, const char *value) {
   s_row_buffer[index] = (s_row_buffer[index] + 1) % 4;
   char *row = s_row_buffers[index][s_row_buffer[index]];
@@ -341,6 +416,9 @@ static void set_row(uint8_t index, bool selected, const char *label, const char 
   text_layer_set_text_color(s_rows[index], selected ? GColorWhite : GColorBlack);
 }
 
+/**
+ * Applies selection styling to the visible rows for the current screen.
+ */
 static void refresh_selection(void) {
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     bool selected = false;
@@ -353,6 +431,11 @@ static void refresh_selection(void) {
   }
 }
 
+/**
+ * Displays the main screen with the configured reminder slots and status message.
+ *
+ * @param note Optional footer message to display when no storage or scheduling error is active.
+ */
 static void show_main(const char *note) {
   s_screen = SCREEN_MAIN;
   snprintf(s_header_text, sizeof(s_header_text), "Pill Reminder");
@@ -377,6 +460,9 @@ static void show_main(const char *note) {
   set_footer_text();
 }
 
+/**
+ * Displays the reminder slot editing screen.
+ */
 static void show_edit(void) {
   s_screen = SCREEN_EDIT;
   snprintf(s_header_text, sizeof(s_header_text), "Edit Pill %u", s_selected_slot + 1);
@@ -392,6 +478,11 @@ static void show_edit(void) {
   set_footer_text();
 }
 
+/**
+ * Displays the alert screen for a reminder slot and its available outcomes.
+ *
+ * @param slot_id Index of the reminder slot to display.
+ */
 static void show_alert(uint8_t slot_id) {
   s_screen = SCREEN_ALERT;
   char time_buffer[16];
@@ -406,6 +497,12 @@ static void show_alert(uint8_t slot_id) {
   set_footer_text();
 }
 
+/**
+ * Handles a reminder wakeup by recording the event, scheduling the next reminder,
+ * vibrating the watch, and displaying the reminder alert.
+ *
+ * @param slot_id Index of the reminder slot that triggered the wakeup.
+ */
 static void handle_wakeup(uint8_t slot_id) {
   if (slot_id >= SLOT_COUNT) return;
   ReminderSlot *slot = &s_state.slots[slot_id];
@@ -422,10 +519,21 @@ static void handle_wakeup(uint8_t slot_id) {
   show_alert(slot_id);
 }
 
+/**
+ * Handles a wakeup notification for the reminder slot identified by the cookie.
+ *
+ * @param id Wakeup identifier.
+ * @param cookie Reminder slot index associated with the wakeup.
+ */
 static void wakeup_handler(WakeupId id, int32_t cookie) {
   handle_wakeup((uint8_t)cookie);
 }
 
+/**
+ * Recovers reminder events that became overdue while the app was inactive.
+ *
+ * @param excluded_slot Slot index to exclude from recovery.
+ */
 static void recover_events_except(int8_t excluded_slot) {
   time_t now = time(NULL);
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
@@ -439,17 +547,35 @@ static void recover_events_except(int8_t excluded_slot) {
 
 static void send_sync_item(void);
 
+/**
+ * Continues synchronisation after an outgoing message is sent.
+ *
+ * @param iterator Message iterator associated with the sent message.
+ * @param context Callback context.
+ */
 static void outbox_sent(DictionaryIterator *iterator, void *context) {
   s_sync_index++;
   send_sync_item();
 }
 
+/**
+ * Handles a failed phone synchronisation attempt.
+ *
+ * @param iterator Message data associated with the failed attempt.
+ * @param reason The reason the message failed.
+ * @param context Callback context.
+ */
 static void outbox_failed(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
   s_syncing = false;
   snprintf(s_footer_text, sizeof(s_footer_text), "Phone unavailable");
   set_footer_text();
 }
 
+/**
+ * Sends a typed payload to the phone.
+ * @param type Message type identifier.
+ * @param payload Message payload text.
+ */
 static void send_payload(int32_t type, const char *payload) {
   DictionaryIterator *iterator;
   if (app_message_outbox_begin(&iterator) != APP_MSG_OK) return;
@@ -458,6 +584,9 @@ static void send_payload(int32_t type, const char *payload) {
   app_message_outbox_send();
 }
 
+/**
+ * Sends the next synchronisation payload or completes the synchronisation process.
+ */
 static void send_sync_item(void) {
   static char payload[500];
   char install_id[16];
@@ -530,6 +659,9 @@ static void send_sync_item(void) {
   show_main("Report sent");
 }
 
+/**
+ * Starts sending the reminder settings and event history to the phone.
+ */
 static void start_sync(void) {
   if (s_syncing) return;
   s_syncing = true;
@@ -546,11 +678,21 @@ static void start_sync(void) {
   send_sync_item();
 }
 
+/**
+ * Handles incoming phone messages that request synchronisation.
+ * @param iterator Dictionary containing the received message.
+ * @param context Callback context, unused.
+ */
 static void inbox_received(DictionaryIterator *iterator, void *context) {
   Tuple *type = dict_find(iterator, MESSAGE_KEY_TYPE);
   if (type && type->value->int32 == 7) start_sync();
 }
 
+/**
+ * Records the selected outcome for the active reminder event.
+ *
+ * @param outcome Outcome reported for the active reminder.
+ */
 static void record_outcome(Outcome outcome) {
   if (!s_active_event_sequence) return;
   ReminderEvent *active_event = NULL;
@@ -572,6 +714,15 @@ static void record_outcome(Outcome outcome) {
   show_main(outcome == OUTCOME_TAKEN ? "Taken recorded" : "Skipped recorded");
 }
 
+/**
+ * Handles a SELECT click according to the current screen.
+ *
+ * Opens the selected reminder for editing, changes the selected edit field,
+ * saves valid reminder changes, or records a taken outcome for an active alert.
+ *
+ * @param recognizer The button click recogniser.
+ * @param context The callback context.
+ */
 static void select_click(ClickRecognizerRef recognizer, void *context) {
   if (s_select_long) {
     s_select_long = false;
@@ -616,6 +767,9 @@ static void select_click(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
+/**
+ * Starts phone synchronisation when the SELECT button is held on the main screen.
+ */
 static void select_long_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_MAIN) {
     s_select_long = true;
@@ -623,6 +777,9 @@ static void select_long_click(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
+/**
+ * Moves the current selection to the previous slot or edit field.
+ */
 static void up_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_MAIN) {
     s_selected_slot = (s_selected_slot + SLOT_COUNT - 1) % SLOT_COUNT;
@@ -633,6 +790,12 @@ static void up_click(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
+/**
+ * Handles a DOWN button press according to the current screen.
+ *
+ * @param recognizer Button press recogniser.
+ * @param context Callback context.
+ */
 static void down_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_ALERT) {
     record_outcome(OUTCOME_SKIPPED);
@@ -645,6 +808,12 @@ static void down_click(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
+/**
+ * Handles the Back button according to the current screen.
+ *
+ * @param recognizer Button recogniser that triggered the click.
+ * @param context Callback context.
+ */
 static void back_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_EDIT) {
     show_main("Edit cancelled");
@@ -656,6 +825,9 @@ static void back_click(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
+/**
+ * Registers button handlers for single- and long-press interactions.
+ */
 static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click);
   window_long_click_subscribe(BUTTON_ID_SELECT, 700, select_long_click, NULL);
@@ -664,6 +836,13 @@ static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_BACK, back_click);
 }
 
+/**
+ * Creates a configured text layer.
+ * @param frame The layer's frame.
+ * @param font The font used to render text.
+ * @param alignment The text alignment.
+ * @returns The created text layer.
+ */
 static TextLayer *make_text_layer(GRect frame, GFont font, GTextAlignment alignment) {
   TextLayer *layer = text_layer_create(frame);
   text_layer_set_background_color(layer, GColorClear);
@@ -673,6 +852,12 @@ static TextLayer *make_text_layer(GRect frame, GFont font, GTextAlignment alignm
   return layer;
 }
 
+/**
+ * Initialises application state, UI layers, event handlers, and wakeup processing.
+ *
+ * Restores persisted data, creates the main window, registers AppMessage and wakeup
+ * callbacks, and handles either the wakeup that launched the app or normal startup.
+ */
 static void init(void) {
   load_state();
 
@@ -714,6 +899,9 @@ static void init(void) {
   window_stack_push(s_window, true);
 }
 
+/**
+ * Releases the window and text layers used by the application.
+ */
 static void deinit(void) {
   for (uint8_t i = 0; i < SLOT_COUNT; i++) text_layer_destroy(s_rows[i]);
   text_layer_destroy(s_header);
@@ -721,6 +909,11 @@ static void deinit(void) {
   window_destroy(s_window);
 }
 
+/**
+ * Initialises the app, runs its event loop, and releases its resources on exit.
+ *
+ * @return Exit status of the application.
+ */
 int main(void) {
   init();
   app_event_loop();

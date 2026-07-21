@@ -10,6 +10,10 @@ var MessageType = {
   REQUEST_SYNC: 7,
 };
 
+/**
+ * Creates an empty phone-side synchronisation state.
+ * @return {Object} A fresh version 1 state with no events, settings, warnings, or dropped events.
+ */
 function defaultState() {
   return {
     version: 1,
@@ -21,6 +25,10 @@ function defaultState() {
   };
 }
 
+/**
+ * Loads the persisted phone-side state, falling back to default state when the stored data is missing or invalid.
+ * @returns {Object} The persisted state or a default state with a warning after a read error.
+ */
 function loadState() {
   try {
     var serialized = localStorage.getItem(STORAGE_KEY);
@@ -44,6 +52,11 @@ function loadState() {
   }
 }
 
+/**
+ * Persists the phone-side state in local storage.
+ * @param {Object} state - The state to persist.
+ * @return {boolean} `true` if the state was saved, `false` if saving failed.
+ */
 function saveState(state) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -54,6 +67,11 @@ function saveState(state) {
   }
 }
 
+/**
+ * Sends a payload to the watch using a Pebble app message.
+ * @param {number} type - The message type.
+ * @param {*} payload - The message payload to serialise.
+ */
 function send(type, payload) {
   Pebble.sendAppMessage(
     {
@@ -67,10 +85,19 @@ function send(type, payload) {
   );
 }
 
+/**
+ * Requests the watch to synchronise its current data.
+ */
 function requestSync() {
   send(MessageType.REQUEST_SYNC, {});
 }
 
+/**
+ * Validates an event before it is stored in phone-side history.
+ * @param {Object} event - The event to validate.
+ * @param {string} installId - The expected watch installation identifier.
+ * @returns {boolean} `true` if the event has valid identifying, scheduling, slot, and outcome data, `false` otherwise.
+ */
 function isValidEvent(event, installId) {
   return Boolean(
     event
@@ -90,6 +117,10 @@ function isValidEvent(event, installId) {
   );
 }
 
+/**
+ * Removes phone history entries older than the 90-day retention window.
+ * @param {Object} state - The persisted phone state whose events are pruned.
+ */
 function prunePhoneHistory(state) {
   var cutoff = Date.now() - NINETY_DAYS_MS;
   state.events = state.events.filter(function (event) {
@@ -97,6 +128,10 @@ function prunePhoneHistory(state) {
   });
 }
 
+/**
+ * Processes an event batch and updates the stored event history.
+ * @param {Object} payload - The batch containing the installation identifier, events, and dropped-event count.
+ */
 function handleEventBatch(payload) {
   if (
     !payload
@@ -135,6 +170,10 @@ function handleEventBatch(payload) {
   saveState(state);
 }
 
+/**
+ * Stores a settings snapshot received from the watch.
+ * @param {Object} payload - The settings snapshot, including an installation identifier and four slot definitions.
+ */
 function handleSettings(payload) {
   if (
     !payload
@@ -153,6 +192,10 @@ function handleSettings(payload) {
   saveState(state);
 }
 
+/**
+ * Records the completion time of a synchronisation.
+ * @param {Object} payload - The synchronisation payload containing an optional completion timestamp.
+ */
 function handleSyncDone(payload) {
   var state = loadState();
   state.lastSyncAt = payload && typeof payload.syncedAt === "number"

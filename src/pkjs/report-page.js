@@ -1,3 +1,8 @@
+/**
+ * Escapes HTML special characters in a value converted to a string.
+ * @param {*} value - The value to escape.
+ * @return {string} The HTML-escaped string.
+ */
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -7,16 +12,32 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+/**
+ * Formats a value as a two-digit string.
+ * @param {number} value - The value to format.
+ * @return {string} The value prefixed with `0` when it is less than 10.
+ */
 function pad2(value) {
   return value < 10 ? "0" + value : String(value);
 }
 
+/**
+ * Formats a date as a local calendar date.
+ * @param {Date} date - The date to format.
+ * @return {string} The date in `YYYY-MM-DD` format.
+ */
 function localDay(date) {
   return date.getFullYear()
     + "-" + pad2(date.getMonth() + 1)
     + "-" + pad2(date.getDate());
 }
 
+/**
+ * Formats a reminder slot time in 12-hour or 24-hour notation.
+ * @param {Object} slot - The slot containing `hour` and `minute` values.
+ * @param {boolean} hour12 - Whether to use 12-hour notation with an AM or PM suffix.
+ * @return {string} The formatted slot time.
+ */
 function formatSlotTime(slot, hour12) {
   if (!hour12) {
     return pad2(slot.hour) + ":" + pad2(slot.minute);
@@ -26,6 +47,11 @@ function formatSlotTime(slot, hour12) {
   return hour + ":" + pad2(slot.minute) + " " + suffix;
 }
 
+/**
+ * Counts scheduled events by outcome.
+ * @param {Array<Object>} events - The events to classify.
+ * @return {{scheduled: number, taken: number, skipped: number, noResponse: number}} Counts for each outcome category.
+ */
 function countOutcomes(events) {
   var counts = { scheduled: events.length, taken: 0, skipped: 0, noResponse: 0 };
   events.forEach(function (event) {
@@ -40,6 +66,12 @@ function countOutcomes(events) {
   return counts;
 }
 
+/**
+ * Builds an HTML summary card for event outcome counts.
+ * @param {string} title - The card heading.
+ * @param {Object} counts - Outcome counts used to calculate the taken percentage.
+ * @returns {string} An HTML summary card.
+ */
 function summaryCard(title, counts) {
   var percentage = counts.scheduled === 0
     ? "—"
@@ -51,6 +83,11 @@ function summaryCard(title, counts) {
     + "<strong>" + counts.noResponse + "</strong> no response</p></section>";
 }
 
+/**
+ * Converts an outcome value into its display label.
+ * @param {*} outcome - The outcome value to label.
+ * @return {string} The corresponding display label.
+ */
 function outcomeLabel(outcome) {
   if (outcome === "taken") {
     return "Self-reported taken";
@@ -61,6 +98,11 @@ function outcomeLabel(outcome) {
   return "No response";
 }
 
+/**
+ * Renders reminder outcomes grouped by local day as expandable HTML detail sections.
+ * @param {Array} events - Reminder outcome events to include.
+ * @return {string} HTML containing daily outcome details, or an empty-state message when no events are provided.
+ */
 function dailyDetails(events) {
   var days = {};
   events.forEach(function (event) {
@@ -94,6 +136,11 @@ function dailyDetails(events) {
   }).join("");
 }
 
+/**
+ * Builds an HTML card displaying the current reminder settings.
+ * @param {Object} settings - The settings snapshot containing reminder slots and hour-format preferences.
+ * @return {string} The rendered settings card HTML.
+ */
 function settingsSection(settings) {
   if (!settings || !Array.isArray(settings.slots)) {
     return "<section class=card><h2>Current reminders</h2>"
