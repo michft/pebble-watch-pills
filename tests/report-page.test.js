@@ -19,6 +19,13 @@ test("renders outcome wording, stale state, and escaped report values", () => {
     ],
     settings: {
       hour12: false,
+      display: {
+        horizontal: 2,
+        vertical: 0,
+        fontSize: 1,
+        textColor: 5,
+        backgroundColor: 1,
+      },
       slots: [
         { id: 0, hour: 8, minute: 0, enabled: true },
         { id: 1, hour: 12, minute: 0, enabled: true },
@@ -35,5 +42,10 @@ test("renders outcome wording, stale state, and escaped report values", () => {
   assert.match(html, /Report may be stale/);
   assert.match(html, /&lt;unsafe&gt;/);
   assert.doesNotMatch(html, /<unsafe>/);
-  assert.match(html, /Edit times on watch/);
+  assert.match(html, /Save settings/);
+  assert.match(html, /Text colour/);
+  assert.match(html, /Background colour/);
+  assert.match(html, /id=slot-0-time type=time required value='08:00'/);
+  assert.match(html, /id=horizontal><option value=0>Left<\/option><option value=1>Center<\/option><option value=2 selected>Right/);
+  assert.match(html, /Enabled reminders need at least a two minute gap/);
 });

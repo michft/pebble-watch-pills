@@ -9,6 +9,7 @@ node_modules/
 .pnpm-store/
 package-lock.json
 coverage/
+output/
 
 # Local environment and logs
 .env

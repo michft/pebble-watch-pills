@@ -1,9 +1,9 @@
 {
-  "name": "pebble-pills",
+  "name": "number-watch",
   "author": "mt",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "keywords": [
-    "pebble-app"
+    "pebble-watchface"
   ],
   "private": true,
   "packageManager": "pnpm@11.5.2",
@@ -17,7 +17,7 @@
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.ts tests/*.test.js"
   },
   "pebble": {
-    "displayName": "Pill Reminder",
+    "displayName": "Number Watch",
     "uuid": "0b31b7f2-71e8-4610-830d-f7eaebef5494",
     "projectType": "native",
     "sdkVersion": "3",
@@ -30,21 +30,31 @@
       "wakeup"
     ],
     "watchapp": {
-      "watchface": false
+      "watchface": true
     },
     "messageKeys": [
       "TYPE",
-      "PAYLOAD"
+      "PAYLOAD",
+      "H_ALIGN",
+      "V_ALIGN",
+      "FONT_SIZE",
+      "TEXT_COLOR",
+      "BACKGROUND_COLOR",
+      "SLOT_0_HOUR",
+      "SLOT_0_MINUTE",
+      "SLOT_0_ENABLED",
+      "SLOT_1_HOUR",
+      "SLOT_1_MINUTE",
+      "SLOT_1_ENABLED",
+      "SLOT_2_HOUR",
+      "SLOT_2_MINUTE",
+      "SLOT_2_ENABLED",
+      "SLOT_3_HOUR",
+      "SLOT_3_MINUTE",
+      "SLOT_3_ENABLED"
     ],
     "resources": {
-      "media": [
-        {
-          "menuIcon": true,
-          "type": "bitmap",
-          "name": "IMAGE_MENU_ICON",
-          "file": "images/menu_icon.png"
-        }
-      ]
+      "media": []
     }
   },
   "devDependencies": {

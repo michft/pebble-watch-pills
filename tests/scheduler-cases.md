@@ -20,3 +20,6 @@ Run on Emery emulator, then physical Pebble Time 2.
 - Disable one reminder. Confirm `+ Add reminder` is reachable after the enabled reminders.
 - Disable until fewer than three remain. Confirm `+ Add reminder` stays on the bottom visible row.
 - Select `+ Add reminder`, save, and confirm the reminder returns to the scrolling list and is scheduled.
+- Save four valid reminder slots from phone settings. Confirm watch persists all four and reschedules earliest wakeup.
+- Submit phone slots less than two minutes apart. Confirm watch retains prior valid settings.
+- Leave watchface visible until a reminder is due. Confirm alert interrupts it; leave it unanswered, confirm `no_response`, then confirm time display returns.
