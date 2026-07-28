@@ -2,6 +2,11 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.2] - 2026-07-28
+
+- Keep cleared phone report history excluded from later watch resyncs, and
+  clarify that time format follows the watch's 12/24-hour system setting.
+
 ## [0.2.1] - 2026-07-28
 
 - Restore Number Watch as a button-capable watchapp with its word-time display
