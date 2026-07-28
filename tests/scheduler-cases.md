@@ -2,6 +2,8 @@
 
 Run on Emery emulator, then physical Pebble Time 2.
 
+- From the word-time display, press Select. Confirm the reminder list opens.
+- Select a reminder. Confirm its enabled state, hour, minute, and save options are reachable.
 - Enable all defaults. Confirm one OS wakeup exists for earliest enabled slot.
 - Set slot 1 two minutes ahead. Exit app. Confirm wake launch and vibration.
 - Leave the alert unanswered. Confirm vibration repeats every 30 seconds for five minutes, then stops and records `no_response`.
@@ -22,4 +24,4 @@ Run on Emery emulator, then physical Pebble Time 2.
 - Select `+ Add reminder`, save, and confirm the reminder returns to the scrolling list and is scheduled.
 - Save four valid reminder slots from phone settings. Confirm watch persists all four and reschedules earliest wakeup.
 - Submit phone slots less than two minutes apart. Confirm watch retains prior valid settings.
-- Leave watchface visible until a reminder is due. Confirm alert interrupts it; leave it unanswered, confirm `no_response`, then confirm time display returns.
+- Leave the time display visible until a reminder is due. Confirm alert interrupts it; leave it unanswered, confirm `no_response`, then confirm time display returns.
