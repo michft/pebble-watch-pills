@@ -1,9 +1,9 @@
 {
   "name": "number-watch",
   "author": "mt",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "keywords": [
-    "pebble-watchface"
+    "pebble-app"
   ],
   "private": true,
   "packageManager": "pnpm@11.5.2",
@@ -30,7 +30,7 @@
       "wakeup"
     ],
     "watchapp": {
-      "watchface": true
+      "watchface": false
     },
     "messageKeys": [
       "TYPE",

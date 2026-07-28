@@ -2,6 +2,15 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.1] - 2026-07-28
+
+- Restore Number Watch as a button-capable watchapp with its word-time display
+  as the home screen.
+- Open the reminder list with Select, then allow reminder editing and alert
+  outcomes through the existing watch buttons.
+- Keep cleared phone report history excluded from later watch resyncs, and
+  clarify that time format follows the watch's 12/24-hour system setting.
+
 ## [0.2.0] - 2026-07-22
 
 - Add Number Watch watchface while retaining four-slot pill reminders, wakeups,
