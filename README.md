@@ -33,6 +33,7 @@ Edit reminder times with the watch controls above or open Number Watch settings
 in the rePebble phone app. Phone page also controls:
 
 - four pill reminder times and enabled state
+- time format follows the watch's 12/24-hour system setting
 - horizontal alignment: left, centre, right
 - vertical alignment: top, middle, bottom
 - font size: small, medium, large
@@ -41,6 +42,10 @@ in the rePebble phone app. Phone page also controls:
 Save sends complete configuration to watch atomically. Enabled reminders must
 remain at least two minutes apart. Watch persists configuration and reschedules
 the next wakeup. Taken means self-reported. Report is not medical record.
+
+**Clear phone report** removes phone-local history. Later synchronisation ignores
+retained watch events scheduled before the clear, while accepting new events.
+The watch's retained history is unchanged.
 
 ## Emulator examples
 
@@ -87,6 +92,17 @@ Install on Emery emulator:
 
 ```sh
 pebble install --emulator emery build/pebble-watch-pills.pbw
+```
+
+## Local CodeRabbit review
+
+Automatic GitHub reviews are disabled in `.coderabbit.yaml`. Authenticate once,
+then review the current jj working-copy changes manually:
+
+```sh
+cr auth login
+cr auth status
+cr review --plain --type uncommitted --base main
 ```
 
 ## CloudPebble deployment

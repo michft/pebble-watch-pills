@@ -69,7 +69,7 @@ Check these in order:
 3. Reopen phone settings and check that **Last synced** advances.
 4. Confirm the watch is connected in rePebble.
 5. Do not press **Clear phone report** while diagnosing. It deletes the phone's
-   local copy, although retained watch history can return during a later sync.
+   local report and excludes older retained watch events from later syncs.
 
 If the watch did not return to the word-time display after Select or Down, the
 response was not completed. If it returned but the phone did not update after

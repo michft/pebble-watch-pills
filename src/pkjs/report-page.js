@@ -177,6 +177,7 @@ function settingsSection(settings) {
   ];
   return "<section class=card><h2>Watch settings</h2>"
     + "<p class=muted>Saved settings transfer to watch.</p>"
+    + "<p class=muted>Time format follows the watch's 12/24-hour system setting.</p>"
     + "<fieldset><legend>Reminders</legend>" + reminderRows + "</fieldset>"
     + "<fieldset><legend>Text position</legend><label for=horizontal>Horizontal</label>"
     + "<select id=horizontal>" + options([[0, "Left"], [1, "Center"], [2, "Right"]], display.horizontal) + "</select>"

@@ -8,6 +8,8 @@ All published versions are tracked here and as GitHub Releases.
   as the home screen.
 - Open the reminder list with Select, then allow reminder editing and alert
   outcomes through the existing watch buttons.
+- Keep cleared phone report history excluded from later watch resyncs, and
+  clarify that time format follows the watch's 12/24-hour system setting.
 
 ## [0.2.0] - 2026-07-22
 
