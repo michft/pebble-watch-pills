@@ -142,20 +142,53 @@ function dailyDetails(events) {
  * @return {string} The rendered settings card HTML.
  */
 function settingsSection(settings) {
-  if (!settings || !Array.isArray(settings.slots)) {
-    return "<section class=card><h2>Current reminders</h2>"
-      + "<p>No settings snapshot synced.</p></section>";
+  var fallbackSlots = [8, 12, 18, 22].map(function (hour, id) {
+    return { id: id, hour: hour, minute: 0, enabled: true };
+  });
+  var slots = settings && Array.isArray(settings.slots)
+    ? settings.slots
+    : fallbackSlots;
+  var display = settings && settings.display ? settings.display : {
+    horizontal: 1,
+    vertical: 1,
+    fontSize: 2,
+    textColor: 0,
+    backgroundColor: 1,
+  };
+  function options(values, selected) {
+    return values.map(function (entry) {
+      return "<option value=" + entry[0]
+        + (entry[0] === selected ? " selected" : "") + ">"
+        + escapeHtml(entry[1]) + "</option>";
+    }).join("");
   }
-  var hour12 = Boolean(settings.hour12);
-  var rows = settings.slots.map(function (slot) {
-    return "<tr><th scope=row>Pill " + (slot.id + 1) + "</th><td>"
-      + escapeHtml(formatSlotTime(slot, hour12)) + "</td><td>"
-      + (slot.enabled ? "On" : "Off") + "</td></tr>";
+  var reminderRows = slots.map(function (slot, index) {
+    return "<div class=reminder><label for=slot-" + index + "-time>Pill "
+      + (index + 1) + "</label><input id=slot-" + index
+      + "-time type=time required value='" + pad2(slot.hour) + ":"
+      + pad2(slot.minute) + "'><label class=toggle><input id=slot-" + index
+      + "-enabled type=checkbox" + (slot.enabled ? " checked" : "")
+      + "> Enabled</label></div>";
   }).join("");
-  return "<section class=card><h2>Current reminders</h2>"
-    + "<p class=muted>Read-only. Edit times on watch.</p>"
-    + "<table><thead><tr><th>Pill</th><th>Time</th><th>State</th></tr></thead>"
-    + "<tbody>" + rows + "</tbody></table></section>";
+  var colors = [
+    [0, "White"], [1, "Black"], [2, "Red"], [3, "Orange"],
+    [4, "Yellow"], [5, "Green"], [6, "Cyan"], [7, "Blue"],
+    [8, "Purple"], [9, "Magenta"],
+  ];
+  return "<section class=card><h2>Watch settings</h2>"
+    + "<p class=muted>Saved settings transfer to watch.</p>"
+    + "<fieldset><legend>Reminders</legend>" + reminderRows + "</fieldset>"
+    + "<fieldset><legend>Text position</legend><label for=horizontal>Horizontal</label>"
+    + "<select id=horizontal>" + options([[0, "Left"], [1, "Center"], [2, "Right"]], display.horizontal) + "</select>"
+    + "<label for=vertical>Vertical</label><select id=vertical>"
+    + options([[0, "Top"], [1, "Middle"], [2, "Bottom"]], display.vertical) + "</select></fieldset>"
+    + "<fieldset><legend>Text appearance</legend><label for=font-size>Font size</label>"
+    + "<select id=font-size>" + options([[0, "Small"], [1, "Medium"], [2, "Large"]], display.fontSize) + "</select>"
+    + "<label for=text-color>Text colour</label><select id=text-color>"
+    + options(colors, display.textColor) + "</select>"
+    + "<label for=background-color>Background colour</label><select id=background-color>"
+    + options(colors, display.backgroundColor) + "</select></fieldset>"
+    + "<button class=save onclick=saveSettings()>Save settings</button></section>";
 }
 
 exports.buildReportPage = function buildReportPage(state) {
@@ -179,7 +212,7 @@ exports.buildReportPage = function buildReportPage(state) {
   var stale = !state.lastSyncAt || now - state.lastSyncAt > 24 * 60 * 60 * 1000;
   var warning = "";
   if (stale) {
-    warning += "<p class=warning>Report may be stale. Open Pill Reminder on watch to sync.</p>";
+    warning += "<p class=warning>Report may be stale. Open Number Watch on watch to sync.</p>";
   }
   if (state.droppedEvents > 0) {
     warning += "<p class=warning>Watch reports " + state.droppedEvents
@@ -199,8 +232,11 @@ exports.buildReportPage = function buildReportPage(state) {
     + ".percentage{font-size:34px;font-weight:700;color:#1e6b91}.warning{background:#fff3cd;border-radius:8px;padding:10px}"
     + "table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 4px;border-bottom:1px solid #e7ecf2}"
     + "summary{cursor:pointer}.empty{padding:15px;background:#fff;border-radius:12px}"
+    + "fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:700;margin-bottom:8px}"
+    + "label{display:block;font-weight:600;margin:10px 0 5px}select,input[type=time]{box-sizing:border-box;width:100%;font-size:17px;padding:10px;border:1px solid #aab6c4;border-radius:8px;background:#fff}"
+    + ".reminder{display:grid;grid-template-columns:1fr 1.2fr;gap:4px 12px;align-items:end;margin:10px 0}.reminder label{margin:0}.toggle{grid-column:2;font-weight:400}input[type=checkbox]{width:auto}"
     + "button{width:100%;padding:13px;margin:8px 0;border:0;border-radius:10px;font-size:17px;font-weight:600}"
-    + ".danger{background:#b42318;color:#fff}.close{background:#dce8f4;color:#172033}"
+    + ".save{background:#1e6b91;color:#fff}.danger{background:#b42318;color:#fff}.close{background:#dce8f4;color:#172033}"
     + "</style></head><body><main><h1>Pill Reminder</h1>"
     + "<p class=sync>Last synced: " + escapeHtml(lastSync) + "</p>"
     + warning
@@ -214,6 +250,7 @@ exports.buildReportPage = function buildReportPage(state) {
     + "<button class=danger onclick=clearHistory()>Clear phone report</button>"
     + "<button class=close onclick=closeReport()>Close</button>"
     + "<script>function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
+    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}closeWith({action:'save_settings',display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:parseInt(document.getElementById('text-color').value,10),backgroundColor:parseInt(document.getElementById('background-color').value,10)},slots:slots})}"
     + "function clearHistory(){if(confirm('Clear phone report history? This cannot be undone.'))closeWith({action:'clear_history'})}"
     + "function closeReport(){closeWith({action:'close'})}</script>"
     + "</main></body></html>";

@@ -1,6 +1,18 @@
 # Changelog
 
-All published versions of Pill Reminder are tracked here and as GitHub Releases.
+All published versions are tracked here and as GitHub Releases.
+
+## [0.2.0] - 2026-07-22
+
+- Add Number Watch watchface while retaining four-slot pill reminders, wakeups,
+  outcome history, persistence, and phone report.
+- Render one time word per line and, in short phrases, split long teen words at
+  a syllable boundary, including `eight / seven / -teen`.
+- Preserve descenders such as final-line `y` by padding watchface text bounds.
+- Add phone settings for reminder times, horizontal and vertical alignment,
+  three font sizes, text colour, and background colour.
+- Make reminder alerts interrupt watchface; final outcome-input UX remains
+  unresolved because Pebble OS reserves watchface buttons.
 
 ## [0.1.2] - 2026-07-21
 

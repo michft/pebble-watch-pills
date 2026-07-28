@@ -8,6 +8,7 @@ var MessageType = {
   SETTINGS_SNAPSHOT: 5,
   SYNC_DONE: 6,
   REQUEST_SYNC: 7,
+  SETTINGS_UPDATE: 8,
 };
 
 /**
@@ -90,6 +91,74 @@ function send(type, payload) {
  */
 function requestSync() {
   send(MessageType.REQUEST_SYNC, {});
+}
+
+function integerInRange(value, minimum, maximum) {
+  return Number.isInteger(value) && value >= minimum && value <= maximum;
+}
+
+function settingsResponseValid(response) {
+  if (
+    !response
+    || !response.display
+    || !Array.isArray(response.slots)
+    || response.slots.length !== 4
+    || !integerInRange(response.display.horizontal, 0, 2)
+    || !integerInRange(response.display.vertical, 0, 2)
+    || !integerInRange(response.display.fontSize, 0, 2)
+    || !integerInRange(response.display.textColor, 0, 9)
+    || !integerInRange(response.display.backgroundColor, 0, 9)
+  ) {
+    return false;
+  }
+  for (var index = 0; index < response.slots.length; index += 1) {
+    var slot = response.slots[index];
+    if (
+      !slot
+      || slot.id !== index
+      || !integerInRange(slot.hour, 0, 23)
+      || !integerInRange(slot.minute, 0, 59)
+      || typeof slot.enabled !== "boolean"
+    ) {
+      return false;
+    }
+    if (!slot.enabled) continue;
+    for (var otherIndex = index + 1; otherIndex < response.slots.length; otherIndex += 1) {
+      var other = response.slots[otherIndex];
+      if (!other.enabled) continue;
+      var leftMinutes = slot.hour * 60 + slot.minute;
+      var rightMinutes = other.hour * 60 + other.minute;
+      var gap = Math.abs(leftMinutes - rightMinutes);
+      gap = Math.min(gap, 1440 - gap);
+      if (gap < 2) return false;
+    }
+  }
+  return true;
+}
+
+function sendSettings(response) {
+  if (!settingsResponseValid(response)) {
+    console.log("Phone settings invalid");
+    return;
+  }
+  var message = {
+    TYPE: MessageType.SETTINGS_UPDATE,
+    H_ALIGN: response.display.horizontal,
+    V_ALIGN: response.display.vertical,
+    FONT_SIZE: response.display.fontSize,
+    TEXT_COLOR: response.display.textColor,
+    BACKGROUND_COLOR: response.display.backgroundColor,
+  };
+  response.slots.forEach(function (slot, index) {
+    message["SLOT_" + index + "_HOUR"] = slot.hour;
+    message["SLOT_" + index + "_MINUTE"] = slot.minute;
+    message["SLOT_" + index + "_ENABLED"] = slot.enabled ? 1 : 0;
+  });
+  Pebble.sendAppMessage(
+    message,
+    function () {},
+    function () { console.log("Phone settings send failed"); }
+  );
 }
 
 /**
@@ -205,7 +274,7 @@ function handleSyncDone(payload) {
 }
 
 Pebble.addEventListener("ready", function () {
-  console.log("Pill Reminder phone bridge ready");
+  console.log("Number Watch phone bridge ready");
   requestSync();
 });
 
@@ -230,8 +299,10 @@ Pebble.addEventListener("appmessage", function (event) {
 
 Pebble.addEventListener("showConfiguration", function () {
   requestSync();
-  var html = reportPage.buildReportPage(loadState());
-  Pebble.openURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+  setTimeout(function () {
+    var html = reportPage.buildReportPage(loadState());
+    Pebble.openURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+  }, 500);
 });
 
 Pebble.addEventListener("webviewclosed", function (event) {
@@ -246,6 +317,19 @@ Pebble.addEventListener("webviewclosed", function (event) {
       state.droppedEvents = 0;
       state.warning = null;
       saveState(state);
+    } else if (response.action === "save_settings" && settingsResponseValid(response)) {
+      var settingsState = loadState();
+      var prior = settingsState.settings || {};
+      settingsState.settings = {
+        installId: prior.installId || null,
+        revision: prior.revision || 0,
+        droppedEvents: prior.droppedEvents || 0,
+        hour12: Boolean(prior.hour12),
+        display: response.display,
+        slots: response.slots,
+      };
+      saveState(settingsState);
+      sendSettings(response);
     }
   } catch (error) {
     console.log("Report action ignored");

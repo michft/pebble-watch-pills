@@ -1,20 +1,58 @@
-# Pill Reminder for Pebble Time 2
+# Number Watch with Pill Reminders
 
-Up to four daily reminder slots, explicit self-reported outcomes, and phone-local reporting for Pebble Time 2 (`emery`).
+Pebble Time 2 (`emery`) watchface displaying current local time as lowercase
+English number words. Four retained pill reminders interrupt watchface when due.
 
-## Features
+> Development note: Pebble OS reserves watchface buttons, so existing
+> Taken/Skipped button controls cannot work while package remains true watchface.
+> Outcome interaction requires product decision before release.
 
-- Three-row scrolling reminder list with up to four independently enabled daily times.
-- Bottom `+ Add reminder` item whenever unused reminder capacity remains.
-- Physical-button operation.
-- Persistent rolling wakeup while app is closed.
-- Repeated vibration for a five-minute reminder window.
-- `Taken`, `Skipped`, and `No response` outcomes kept distinct.
-- Offline history with duplicate-safe phone sync.
-- Today, 7-day, and 30-day report inside rePebble mobile app.
-- No account, backend, analytics, or medication-data network requests.
+See [Using the app](docs/using-the-app.md) for the Pill Reminder 0.1.2 button
+map, phone synchronisation steps, troubleshooting, and the Number Watch 0.2.0
+acknowledgement limitation.
 
-`Taken` is self-reported. Report is not medical record or dosage advice.
+Time uses one word per line. Phrases containing at most three words split long
+teen words at spoken syllable boundary:
+
+```text
+eight       twelve
+seven       twenty
+-teen       seven
+```
+
+Watch follows 12/24-hour preference, updates every minute, omits leading `zero`
+for minutes below ten, and omits minutes at `:00`.
+
+## Settings
+
+Open Number Watch settings in rePebble phone app. Phone page controls:
+
+- four pill reminder times and enabled state
+- horizontal alignment: left, centre, right
+- vertical alignment: top, middle, bottom
+- font size: small, medium, large
+- independent text and background colours
+
+Save sends complete configuration to watch atomically. Enabled reminders must
+remain at least two minutes apart. Watch persists config and reschedules next
+wakeup. Phone is configuration surface because Pebble OS reserves watchface
+buttons.
+
+Existing Taken, Skipped, and No response model/report remain in code. Final
+input path is pending. Taken means self-reported. Report is not medical record.
+
+## Emulator examples
+
+Screenshots are saved in [`docs/screenshots`](docs/screenshots):
+
+- [`twelve-twenty-seven.png`](docs/screenshots/twelve-twenty-seven.png) — preferred large centred layout
+- [`eight-seventeen.png`](docs/screenshots/eight-seventeen.png) — syllable split
+- [`twelve-thirty.png`](docs/screenshots/twelve-thirty.png)
+- [`one-six.png`](docs/screenshots/one-six.png)
+- [`one-twenty.png`](docs/screenshots/one-twenty.png) — final-line descender check
+- [`left-top-green-medium.png`](docs/screenshots/left-top-green-medium.png) — position, size, colour config
+- [`right-bottom-yellow-small.png`](docs/screenshots/right-bottom-yellow-small.png) — second position/colour config
+- [`pill-reminder-alert.png`](docs/screenshots/pill-reminder-alert.png) — live wakeup interruption
 
 ## Build
 
@@ -25,6 +63,7 @@ Requirements:
 - Node.js 22.18.0+
 - pnpm
 - rePebble `pebble-tool` and current SDK
+- C compiler for native formatter tests
 
 One-time SDK setup:
 
@@ -41,112 +80,71 @@ pnpm test
 pnpm build
 ```
 
-Package output: `build/pebble-pills.pbw`.
+Package output: `build/pebble-watch-pills.pbw`.
+
+Install on Emery emulator:
+
+```sh
+pebble install --emulator emery build/pebble-watch-pills.pbw
+```
 
 ## CloudPebble deployment
 
-The active browser project is
+Active browser project:
 [CloudPebble project 22199](https://cloudpebble.repebble.com/ide/project/22199#).
-Use it to build the current GitHub code and install it on the watch or Emery
-emulator:
 
-1. Sign in to CloudPebble using the Google account that owns the project.
-2. Open project 22199 and sync the latest `main` through GitHub Repo Sync.
-3. Build the project.
-4. Run it using the phone target for the physical watch, or the Emery emulator
-   for browser testing.
+1. Sign in using Google account owning project.
+2. Sync latest `main` through GitHub Repo Sync.
+3. Build project.
+4. Run using phone target or Emery emulator.
 
-Phone deployment requires Cloud Dev Connection to be linked in CloudPebble
-Settings and enabled in the rePebble iOS app. CloudPebble handles development
-builds and watch installation; publishing a new app-store version remains the
-separate release workflow below.
+Phone deployment requires Cloud Dev Connection linked in CloudPebble Settings
+and enabled in rePebble iOS app.
 
 ## Releases
 
-The version in `package.json` is the release source of truth. Before merging a
-release to `main`, increment that version and add the matching entry to
-`CHANGELOG.md`. Successful deployments create a matching GitHub Release and
-attach the `.pbw`, providing the release history.
+`package.json` version is release source of truth. Before merging release to
+`main`, increment version and add matching `CHANGELOG.md` entry. Push to `main`
+runs tests, builds watchface, uploads Pebble app-store version, then creates
+GitHub Release with `.pbw`.
 
-Every push to `main` runs `.github/workflows/release.yml`, tests and builds the
-app, uploads the new release to the Pebble app store, then creates the GitHub
-Release. Configure these GitHub repository settings first:
+Required GitHub repository secrets:
 
-- Secret `PEBBLE_FIREBASE_REFRESH_TOKEN`: the Firebase refresh token created by
-  the current rePebble `pebble login` flow.
+- `PEBBLE_FIREBASE_REFRESH_TOKEN`
+- `PEBBLE_FIREBASE_API_KEY`
 
-On macOS, sign in and pipe the refresh token directly into GitHub without
-printing it:
+Sign in and pipe refresh token directly into GitHub without printing it:
 
 ```sh
 pebble login
 jq -r .refresh_token \
   "$HOME/Library/Application Support/Pebble SDK/oauth_firebase/firebase_oauth_storage.json" \
-  | gh secret set PEBBLE_FIREBASE_REFRESH_TOKEN --repo michft/pebble-pills
+  | gh secret set PEBBLE_FIREBASE_REFRESH_TOKEN --repo michft/pebble-watch-pills
 ```
 
-The workflow exchanges that refresh token for a short-lived Firebase ID token,
-then uses the supported `pebble publish` command. The existing app is resolved
-from PBW UUID `0b31b7f2-71e8-4610-830d-f7eaebef5494`; its public app-store ID is
+Copy Firebase Web API key, then store it without printing:
+
+```sh
+pbpaste | gh secret set PEBBLE_FIREBASE_API_KEY --repo michft/pebble-watch-pills
+```
+
+Workflow exchanges refresh token for short-lived Firebase ID token, then uses
+supported `pebble publish` command. Existing store entry resolves from PBW UUID
+`0b31b7f2-71e8-4610-830d-f7eaebef5494`; public app-store ID is
 `384b30aa3eeb468ba63a4f7e`.
 
-If authentication is revoked, run `pebble login` and the `jq | gh secret set`
-command again. A reused version fails before build; bump `package.json` and add
-its changelog entry before retrying.
+If auth revoked, run `pebble login`, update refresh-token secret, and retry.
+Reused version fails before build; bump `package.json` and `CHANGELOG.md` first.
 
-CodeRabbit reviews are debounced for 20 seconds after a pull request is opened
-or updated. A newer update cancels and restarts the timer.
+## Design reference
 
-## Install
-
-CloudPebble project 22199 is the primary watch deployment method. In the
-rePebble mobile app: Devices → three-dot menu → Enable Dev Connect → sign into
-GitHub, then use the CloudPebble project's phone target.
-
-For command-line installation instead:
-
-```sh
-pebble login
-pebble install --cloudpebble
-```
-
-Or install on Emery emulator:
-
-```sh
-pebble install --emulator emery
-```
-
-## Watch controls
-
-Main screen:
-
-- Up/Down: scroll enabled reminders and the add item.
-- Select: edit a reminder, or open a new reminder from `+ Add reminder`.
-- Hold Select: send report to phone now.
-
-Edit screen:
-
-- Up/Down: choose field.
-- Select: toggle/increment/save.
-- Back: cancel.
-
-Reminder screen:
-
-- Select or `Taken`: record self-reported taken.
-- Down or `Skipped`: record skipped.
-- Back: leave no response.
-- The watch repeats its vibration every 30 seconds for five minutes, then closes the alert as `No response`.
-
-## Phone report
-
-Open app gear/config action in rePebble mobile app. Report uses PebbleKit JS local storage. Phone requests sync when watch app opens. Hold Select for manual sync. Watch resends retained history; phone deduplicates by watch install ID and sequence.
-
-Phone settings are read-only in v1. Edit reminder times on watch.
+[Pebble Fuzzy Text International PT2](https://github.com/adamboutcher/Pebble-Fuzzy-Text-International-PT2)
+was visual reference only. This repo keeps independent implementation; no
+upstream code or assets copied.
 
 ## Limits
 
-- Watch keeps newest 128 events; phone keeps 90 days.
-- Enabled times require two-minute separation.
-- App keeps one rolling OS alarm for the next enabled slot. Open watch app once after timezone travel to recalculate it.
-- No guaranteed continuous background sync.
-- Clearing phone report is irreversible. Retained watch history can return on next sync.
+- English number words only.
+- Pebble Time 2 (`emery`) only.
+- Fixed 24-hour repeating reminder schedule; four slots.
+- Phone history retained locally for 90 days; watch retains latest 128 events.

@@ -10,3 +10,5 @@
 - Open report disconnected. Confirm last cached report and stale timestamp.
 - Verify report loads without network requests or external resources.
 - Verify phone report contains no pill data in console logs.
+- Open phone settings. Confirm latest watch snapshot populates all reminders, position, size, and colours.
+- Save phone settings. Confirm watch acknowledges accepted values with a fresh settings snapshot.

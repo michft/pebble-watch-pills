@@ -1,4 +1,4 @@
-name: Release Pebble app
+name: Release Number Watch
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: pebble-app-store-release
+  group: number-watch-store-release
   cancel-in-progress: false
 
 jobs:
@@ -84,7 +84,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          PBW_VERSION="$(unzip -p build/pebble-pills.pbw appinfo.json | node -e \
+          PBW_VERSION="$(unzip -p build/pebble-watch-pills.pbw appinfo.json | node -e \
             'let value=""; process.stdin.on("data", chunk => value += chunk); process.stdin.on("end", () => console.log(JSON.parse(value).versionLabel));')"
           if [ "${PBW_VERSION}" != "${RELEASE_VERSION}" ]; then
             echo "PBW version ${PBW_VERSION} does not match package version ${RELEASE_VERSION}." >&2
@@ -92,13 +92,19 @@ jobs:
           fi
 
       - name: Refresh Pebble app-store token
+        env:
+          PEBBLE_FIREBASE_API_KEY: ${{ secrets.PEBBLE_FIREBASE_API_KEY }}
         run: |
+          if [ -z "${PEBBLE_FIREBASE_API_KEY}" ]; then
+            echo "Set the PEBBLE_FIREBASE_API_KEY repository secret." >&2
+            exit 1
+          fi
           TOKEN_RESPONSE="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/x-www-form-urlencoded" \
             --data-urlencode "grant_type=refresh_token" \
             --data-urlencode "refresh_token=${PEBBLE_FIREBASE_REFRESH_TOKEN}" \
-            "https://securetoken.googleapis.com/v1/token?key=AIzaSyBZ9Cdvwwv9At2lPmc8TxyyEqSXGXejGvc")"
+            "https://securetoken.googleapis.com/v1/token?key=${PEBBLE_FIREBASE_API_KEY}")"
           PEBBLE_FIREBASE_ID_TOKEN="$(printf '%s' "${TOKEN_RESPONSE}" | node -e \
             'let value=""; process.stdin.on("data", chunk => value += chunk); process.stdin.on("end", () => { const token = JSON.parse(value).id_token; if (!token) throw new Error("Firebase response has no id_token"); process.stdout.write(token); });')"
           echo "::add-mask::${PEBBLE_FIREBASE_ID_TOKEN}"
@@ -123,7 +129,7 @@ jobs:
           RELEASE_NOTES: ${{ steps.release.outputs.notes }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          gh release create "${RELEASE_TAG}" build/pebble-pills.pbw \
+          gh release create "${RELEASE_TAG}" build/pebble-watch-pills.pbw \
             --target "${GITHUB_SHA}" \
-            --title "Pill Reminder ${RELEASE_TAG}" \
+            --title "Number Watch ${RELEASE_TAG}" \
             --notes "${RELEASE_NOTES}"

@@ -1,5 +1,27 @@
 #include <pebble.h>
 
+#include "time_words.h"
+
+extern uint32_t MESSAGE_KEY_TYPE;
+extern uint32_t MESSAGE_KEY_PAYLOAD;
+extern uint32_t MESSAGE_KEY_H_ALIGN;
+extern uint32_t MESSAGE_KEY_V_ALIGN;
+extern uint32_t MESSAGE_KEY_FONT_SIZE;
+extern uint32_t MESSAGE_KEY_TEXT_COLOR;
+extern uint32_t MESSAGE_KEY_BACKGROUND_COLOR;
+extern uint32_t MESSAGE_KEY_SLOT_0_HOUR;
+extern uint32_t MESSAGE_KEY_SLOT_0_MINUTE;
+extern uint32_t MESSAGE_KEY_SLOT_0_ENABLED;
+extern uint32_t MESSAGE_KEY_SLOT_1_HOUR;
+extern uint32_t MESSAGE_KEY_SLOT_1_MINUTE;
+extern uint32_t MESSAGE_KEY_SLOT_1_ENABLED;
+extern uint32_t MESSAGE_KEY_SLOT_2_HOUR;
+extern uint32_t MESSAGE_KEY_SLOT_2_MINUTE;
+extern uint32_t MESSAGE_KEY_SLOT_2_ENABLED;
+extern uint32_t MESSAGE_KEY_SLOT_3_HOUR;
+extern uint32_t MESSAGE_KEY_SLOT_3_MINUTE;
+extern uint32_t MESSAGE_KEY_SLOT_3_ENABLED;
+
 #define SLOT_COUNT 4
 #define MAIN_VISIBLE_ROWS 3
 #define MAIN_ADD_ITEM SLOT_COUNT
@@ -7,10 +29,14 @@
 #define STATE_VERSION 2
 #define PERSIST_KEY_META 1
 #define PERSIST_KEY_EVENTS_BASE 2
+#define PERSIST_KEY_DISPLAY_SETTINGS 100
+#define DISPLAY_SETTINGS_VERSION 1
+#define WATCHFACE_DESCENDER_PADDING 6
 #define REMINDER_DURATION_SECONDS (5 * 60)
 #define REMINDER_BUZZ_INTERVAL_MS (30 * 1000)
 
 typedef enum {
+  SCREEN_WATCHFACE,
   SCREEN_MAIN,
   SCREEN_EDIT,
   SCREEN_ALERT,
@@ -22,6 +48,33 @@ typedef enum {
   OUTCOME_TAKEN,
   OUTCOME_SKIPPED
 } Outcome;
+
+typedef enum {
+  HORIZONTAL_LEFT,
+  HORIZONTAL_CENTER,
+  HORIZONTAL_RIGHT
+} HorizontalAlignment;
+
+typedef enum {
+  VERTICAL_TOP,
+  VERTICAL_MIDDLE,
+  VERTICAL_BOTTOM
+} VerticalAlignment;
+
+typedef enum {
+  FONT_SMALL,
+  FONT_MEDIUM,
+  FONT_LARGE
+} FontSize;
+
+typedef struct {
+  uint16_t version;
+  uint8_t horizontal_alignment;
+  uint8_t vertical_alignment;
+  uint8_t font_size;
+  uint8_t text_color;
+  uint8_t background_color;
+} DisplaySettings;
 
 typedef struct {
   uint8_t hour;
@@ -67,11 +120,13 @@ _Static_assert(sizeof(PersistMeta) <= PERSIST_DATA_MAX_LENGTH, "PersistMeta exce
 _Static_assert(EVENTS_PER_CHUNK > 0, "ReminderEvent exceeds Pebble value limit");
 
 static Window *s_window;
+static TextLayer *s_watchface;
 static TextLayer *s_header;
 static TextLayer *s_rows[SLOT_COUNT];
 static TextLayer *s_footer;
 static AppState s_state;
-static Screen s_screen = SCREEN_MAIN;
+static DisplaySettings s_display_settings;
+static Screen s_screen = SCREEN_WATCHFACE;
 static uint8_t s_selected_slot;
 static uint8_t s_edit_field;
 static ReminderSlot s_edit_slot;
@@ -82,6 +137,7 @@ static AppTimer *s_alert_timer;
 static time_t s_alert_ends_at;
 static bool s_select_long;
 static bool s_syncing;
+static bool s_sync_show_status;
 static bool s_schedule_error;
 static bool s_storage_error;
 static uint16_t s_sync_index;
@@ -93,6 +149,7 @@ static char s_footer_buffers[2][64];
 static uint8_t s_header_buffer;
 static uint8_t s_row_buffer[SLOT_COUNT];
 static uint8_t s_footer_buffer;
+static char s_watchface_text[80];
 
 /**
  * Updates a checksum with the supplied byte data.
@@ -239,6 +296,153 @@ static void load_state(void) {
   if (!restored) {
     reset_state();
   }
+}
+
+static bool display_settings_valid(const DisplaySettings *settings) {
+  return settings->version == DISPLAY_SETTINGS_VERSION
+    && settings->horizontal_alignment <= HORIZONTAL_RIGHT
+    && settings->vertical_alignment <= VERTICAL_BOTTOM
+    && settings->font_size <= FONT_LARGE
+    && settings->text_color <= 9
+    && settings->background_color <= 9;
+}
+
+static void save_display_settings(void) {
+  int written = persist_write_data(
+    PERSIST_KEY_DISPLAY_SETTINGS,
+    &s_display_settings,
+    sizeof(s_display_settings)
+  );
+  if (written != (int)sizeof(s_display_settings)) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Display settings persistence failed: %d", written);
+  }
+}
+
+static void load_display_settings(void) {
+  bool restored = persist_get_size(PERSIST_KEY_DISPLAY_SETTINGS)
+      == (int)sizeof(s_display_settings)
+    && persist_read_data(
+      PERSIST_KEY_DISPLAY_SETTINGS,
+      &s_display_settings,
+      sizeof(s_display_settings)
+    ) == (int)sizeof(s_display_settings)
+    && display_settings_valid(&s_display_settings);
+  if (restored) return;
+
+  s_display_settings = (DisplaySettings) {
+    .version = DISPLAY_SETTINGS_VERSION,
+    .horizontal_alignment = HORIZONTAL_CENTER,
+    .vertical_alignment = VERTICAL_MIDDLE,
+    .font_size = FONT_LARGE,
+    .text_color = 0,
+    .background_color = 1,
+  };
+  save_display_settings();
+}
+
+static GColor color_for_id(uint8_t color_id) {
+  switch (color_id) {
+    case 1: return GColorBlack;
+    case 2: return GColorRed;
+    case 3: return GColorOrange;
+    case 4: return GColorYellow;
+    case 5: return GColorGreen;
+    case 6: return GColorCyan;
+    case 7: return GColorBlue;
+    case 8: return GColorPurple;
+    case 9: return GColorMagenta;
+    default: return GColorWhite;
+  }
+}
+
+static GFont watchface_font(void) {
+  switch (s_display_settings.font_size) {
+    case FONT_SMALL:
+      return fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    case FONT_MEDIUM:
+      return fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
+    default:
+      return fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD);
+  }
+}
+
+static GTextAlignment watchface_alignment(void) {
+  switch (s_display_settings.horizontal_alignment) {
+    case HORIZONTAL_LEFT: return GTextAlignmentLeft;
+    case HORIZONTAL_RIGHT: return GTextAlignmentRight;
+    default: return GTextAlignmentCenter;
+  }
+}
+
+static void set_reminder_layers_hidden(bool hidden) {
+  layer_set_hidden(text_layer_get_layer(s_header), hidden);
+  layer_set_hidden(text_layer_get_layer(s_footer), hidden);
+  for (uint8_t index = 0; index < SLOT_COUNT; index++) {
+    layer_set_hidden(text_layer_get_layer(s_rows[index]), hidden);
+  }
+}
+
+static void show_reminder_layers(void) {
+  layer_set_hidden(text_layer_get_layer(s_watchface), true);
+  set_reminder_layers_hidden(false);
+  window_set_background_color(s_window, GColorWhite);
+}
+
+static void update_watchface(void) {
+  if (!s_watchface) return;
+  time_t now = time(NULL);
+  struct tm *local = localtime(&now);
+  if (!time_words_format_lines(
+    local->tm_hour,
+    local->tm_min,
+    clock_is_24h_style(),
+    s_watchface_text,
+    sizeof(s_watchface_text)
+  )) {
+    snprintf(s_watchface_text, sizeof(s_watchface_text), "Time unavailable");
+  }
+
+  Layer *root = window_get_root_layer(s_window);
+  GRect bounds = layer_get_bounds(root);
+  GFont font = watchface_font();
+  text_layer_set_font(s_watchface, font);
+  text_layer_set_text_alignment(s_watchface, watchface_alignment());
+  text_layer_set_text_color(s_watchface, color_for_id(s_display_settings.text_color));
+  text_layer_set_text(s_watchface, s_watchface_text);
+  layer_set_frame(
+    text_layer_get_layer(s_watchface),
+    GRect(6, 0, bounds.size.w - 12, bounds.size.h)
+  );
+  GSize content = text_layer_get_content_size(s_watchface);
+  int16_t padded_height = content.h + WATCHFACE_DESCENDER_PADDING;
+  int16_t height = padded_height > bounds.size.h - 8
+    ? bounds.size.h - 8
+    : padded_height;
+  int16_t y = 4;
+  if (s_display_settings.vertical_alignment == VERTICAL_MIDDLE) {
+    y = (bounds.size.h - height) / 2;
+  } else if (s_display_settings.vertical_alignment == VERTICAL_BOTTOM) {
+    y = bounds.size.h - height - 4;
+  }
+  layer_set_frame(
+    text_layer_get_layer(s_watchface),
+    GRect(6, y, bounds.size.w - 12, height)
+  );
+  window_set_background_color(
+    s_window,
+    color_for_id(s_display_settings.background_color)
+  );
+}
+
+static void show_watchface(void) {
+  s_screen = SCREEN_WATCHFACE;
+  set_reminder_layers_hidden(true);
+  layer_set_hidden(text_layer_get_layer(s_watchface), false);
+  update_watchface();
+}
+
+static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
+  if (s_screen == SCREEN_WATCHFACE) update_watchface();
 }
 
 /**
@@ -522,6 +726,7 @@ static void refresh_selection(void) {
  */
 static void show_main(const char *note) {
   s_screen = SCREEN_MAIN;
+  show_reminder_layers();
   layout_main_rows();
   snprintf(s_header_text, sizeof(s_header_text), "Pill Reminders");
   set_header_text();
@@ -569,6 +774,7 @@ static void show_main(const char *note) {
  */
 static void show_edit(void) {
   s_screen = SCREEN_EDIT;
+  show_reminder_layers();
   layout_detail_rows();
   snprintf(s_header_text, sizeof(s_header_text), "Edit Pill %u", s_selected_slot + 1);
   set_header_text();
@@ -590,6 +796,7 @@ static void show_edit(void) {
  */
 static void show_alert(uint8_t slot_id) {
   s_screen = SCREEN_ALERT;
+  show_reminder_layers();
   layout_detail_rows();
   char time_buffer[16];
   format_time(&s_state.slots[slot_id], time_buffer, sizeof(time_buffer));
@@ -638,7 +845,7 @@ static void alert_timer_callback(void *context) {
   if (time(NULL) >= s_alert_ends_at) {
     s_alert_ends_at = 0;
     s_active_event_sequence = 0;
-    show_main("No response recorded");
+    show_watchface();
     return;
   }
   buzz_alert();
@@ -711,6 +918,7 @@ static void recover_events_except(int8_t excluded_slot) {
 }
 
 static void send_sync_item(void);
+static void send_settings_snapshot(void);
 
 /**
  * Continues synchronisation after an outgoing message is sent.
@@ -719,6 +927,7 @@ static void send_sync_item(void);
  * @param context Callback context.
  */
 static void outbox_sent(DictionaryIterator *iterator, void *context) {
+  if (!s_syncing) return;
   s_sync_index++;
   send_sync_item();
 }
@@ -732,8 +941,10 @@ static void outbox_sent(DictionaryIterator *iterator, void *context) {
  */
 static void outbox_failed(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
   s_syncing = false;
-  snprintf(s_footer_text, sizeof(s_footer_text), "Phone unavailable");
-  set_footer_text();
+  if (s_sync_show_status) {
+    snprintf(s_footer_text, sizeof(s_footer_text), "Phone unavailable");
+    set_footer_text();
+  }
 }
 
 /**
@@ -749,6 +960,37 @@ static void send_payload(int32_t type, const char *payload) {
   app_message_outbox_send();
 }
 
+static void send_settings_snapshot(void) {
+  static char payload[600];
+  char install_id[16];
+  snprintf(install_id, sizeof(install_id), "%08lx", (unsigned long)s_state.install_id);
+  snprintf(
+    payload,
+    sizeof(payload),
+    "{\"installId\":\"%s\",\"revision\":%lu,\"droppedEvents\":%u,\"hour12\":%s,"
+    "\"display\":{\"horizontal\":%u,\"vertical\":%u,\"fontSize\":%u,"
+    "\"textColor\":%u,\"backgroundColor\":%u},\"slots\":["
+    "{\"id\":0,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
+    "{\"id\":1,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
+    "{\"id\":2,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
+    "{\"id\":3,\"hour\":%u,\"minute\":%u,\"enabled\":%s}]}",
+    install_id,
+    (unsigned long)s_state.settings_revision,
+    s_state.dropped_events,
+    clock_is_24h_style() ? "false" : "true",
+    s_display_settings.horizontal_alignment,
+    s_display_settings.vertical_alignment,
+    s_display_settings.font_size,
+    s_display_settings.text_color,
+    s_display_settings.background_color,
+    s_state.slots[0].hour, s_state.slots[0].minute, s_state.slots[0].enabled ? "true" : "false",
+    s_state.slots[1].hour, s_state.slots[1].minute, s_state.slots[1].enabled ? "true" : "false",
+    s_state.slots[2].hour, s_state.slots[2].minute, s_state.slots[2].enabled ? "true" : "false",
+    s_state.slots[3].hour, s_state.slots[3].minute, s_state.slots[3].enabled ? "true" : "false"
+  );
+  send_payload(5, payload);
+}
+
 /**
  * Sends the next configuration, event, or completion payload for the active synchronisation.
  */
@@ -757,24 +999,7 @@ static void send_sync_item(void) {
   char install_id[16];
   snprintf(install_id, sizeof(install_id), "%08lx", (unsigned long)s_state.install_id);
   if (s_sync_index == 0) {
-    snprintf(
-      payload,
-      sizeof(payload),
-      "{\"installId\":\"%s\",\"revision\":%lu,\"droppedEvents\":%u,\"hour12\":%s,\"slots\":["
-      "{\"id\":0,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
-      "{\"id\":1,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
-      "{\"id\":2,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
-      "{\"id\":3,\"hour\":%u,\"minute\":%u,\"enabled\":%s}]}",
-      install_id,
-      (unsigned long)s_state.settings_revision,
-      s_state.dropped_events,
-      clock_is_24h_style() ? "false" : "true",
-      s_state.slots[0].hour, s_state.slots[0].minute, s_state.slots[0].enabled ? "true" : "false",
-      s_state.slots[1].hour, s_state.slots[1].minute, s_state.slots[1].enabled ? "true" : "false",
-      s_state.slots[2].hour, s_state.slots[2].minute, s_state.slots[2].enabled ? "true" : "false",
-      s_state.slots[3].hour, s_state.slots[3].minute, s_state.slots[3].enabled ? "true" : "false"
-    );
-    send_payload(5, payload);
+    send_settings_snapshot();
     return;
   }
   uint16_t event_index = s_sync_index - 1;
@@ -821,17 +1046,23 @@ static void send_sync_item(void) {
     return;
   }
   s_syncing = false;
-  show_main("Report sent");
+  if (s_sync_show_status) show_main("Report sent");
 }
 
 /**
  * Starts sending the reminder settings and event history to the phone.
  */
-static void start_sync(void) {
+static void start_sync(bool show_status) {
   if (s_syncing) return;
   s_syncing = true;
+  s_sync_show_status = show_status;
   s_sync_index = 0;
+  if (!show_status) {
+    send_sync_item();
+    return;
+  }
   s_screen = SCREEN_SYNC;
+  show_reminder_layers();
   layout_detail_rows();
   snprintf(s_header_text, sizeof(s_header_text), "Pill Reminder");
   set_header_text();
@@ -851,7 +1082,78 @@ static void start_sync(void) {
  */
 static void inbox_received(DictionaryIterator *iterator, void *context) {
   Tuple *type = dict_find(iterator, MESSAGE_KEY_TYPE);
-  if (type && type->value->int32 == 7) start_sync();
+  if (!type) return;
+  if (type->value->int32 == 7) {
+    start_sync(false);
+    return;
+  }
+  if (type->value->int32 != 8) return;
+
+  const uint32_t display_keys[] = {
+    MESSAGE_KEY_H_ALIGN,
+    MESSAGE_KEY_V_ALIGN,
+    MESSAGE_KEY_FONT_SIZE,
+    MESSAGE_KEY_TEXT_COLOR,
+    MESSAGE_KEY_BACKGROUND_COLOR,
+  };
+  const int32_t display_maximums[] = {2, 2, 2, 9, 9};
+  int32_t display_values[ARRAY_LENGTH(display_keys)];
+  for (uint8_t index = 0; index < ARRAY_LENGTH(display_keys); index++) {
+    Tuple *value = dict_find(iterator, display_keys[index]);
+    if (!value || value->value->int32 < 0 || value->value->int32 > display_maximums[index]) {
+      send_settings_snapshot();
+      return;
+    }
+    display_values[index] = value->value->int32;
+  }
+
+  const uint32_t hour_keys[SLOT_COUNT] = {
+    MESSAGE_KEY_SLOT_0_HOUR, MESSAGE_KEY_SLOT_1_HOUR,
+    MESSAGE_KEY_SLOT_2_HOUR, MESSAGE_KEY_SLOT_3_HOUR,
+  };
+  const uint32_t minute_keys[SLOT_COUNT] = {
+    MESSAGE_KEY_SLOT_0_MINUTE, MESSAGE_KEY_SLOT_1_MINUTE,
+    MESSAGE_KEY_SLOT_2_MINUTE, MESSAGE_KEY_SLOT_3_MINUTE,
+  };
+  const uint32_t enabled_keys[SLOT_COUNT] = {
+    MESSAGE_KEY_SLOT_0_ENABLED, MESSAGE_KEY_SLOT_1_ENABLED,
+    MESSAGE_KEY_SLOT_2_ENABLED, MESSAGE_KEY_SLOT_3_ENABLED,
+  };
+  ReminderSlot proposed[SLOT_COUNT];
+  memcpy(proposed, s_state.slots, sizeof(proposed));
+  for (uint8_t index = 0; index < SLOT_COUNT; index++) {
+    Tuple *hour = dict_find(iterator, hour_keys[index]);
+    Tuple *minute = dict_find(iterator, minute_keys[index]);
+    Tuple *enabled = dict_find(iterator, enabled_keys[index]);
+    if (
+      !hour || !minute || !enabled
+      || hour->value->int32 < 0 || hour->value->int32 > 23
+      || minute->value->int32 < 0 || minute->value->int32 > 59
+      || enabled->value->int32 < 0 || enabled->value->int32 > 1
+    ) {
+      send_settings_snapshot();
+      return;
+    }
+    proposed[index].hour = (uint8_t)hour->value->int32;
+    proposed[index].minute = (uint8_t)minute->value->int32;
+    proposed[index].enabled = enabled->value->int32 == 1;
+  }
+  if (times_too_close(proposed)) {
+    send_settings_snapshot();
+    return;
+  }
+
+  memcpy(s_state.slots, proposed, sizeof(s_state.slots));
+  s_display_settings.horizontal_alignment = (uint8_t)display_values[0];
+  s_display_settings.vertical_alignment = (uint8_t)display_values[1];
+  s_display_settings.font_size = (uint8_t)display_values[2];
+  s_display_settings.text_color = (uint8_t)display_values[3];
+  s_display_settings.background_color = (uint8_t)display_values[4];
+  s_state.settings_revision++;
+  save_display_settings();
+  schedule_next();
+  if (s_screen == SCREEN_WATCHFACE) update_watchface();
+  send_settings_snapshot();
 }
 
 /**
@@ -871,21 +1173,21 @@ static void record_outcome(Outcome outcome) {
   }
   if (!active_event) {
     s_active_event_sequence = 0;
-    show_main("Reminder not found");
+    show_watchface();
     return;
   }
   active_event->outcome = outcome;
   active_event->answered_at = time(NULL);
   (void)save_state();
   s_active_event_sequence = 0;
-  show_main(outcome == OUTCOME_TAKEN ? "Taken recorded" : "Skipped recorded");
+  show_watchface();
 }
 
 /**
  * Handles a SELECT click according to the current screen.
  *
- * Opens the selected reminder for editing, changes the selected edit field,
- * saves valid reminder changes, or records a taken outcome for an active alert.
+ * Changes the selected edit field, saves valid reminder changes, or records a
+ * taken outcome for an active alert.
  *
  * @param recognizer The button click recogniser.
  * @param context The callback context.
@@ -895,26 +1197,7 @@ static void select_click(ClickRecognizerRef recognizer, void *context) {
     s_select_long = false;
     return;
   }
-  if (s_screen == SCREEN_MAIN) {
-    uint8_t items[SLOT_COUNT + 1];
-    uint8_t item_count = build_main_items(items);
-    if (s_main_selection >= item_count) s_main_selection = item_count - 1;
-    uint8_t selected_item = items[s_main_selection];
-    if (selected_item == MAIN_ADD_ITEM) {
-      for (uint8_t i = 0; i < SLOT_COUNT; i++) {
-        if (!s_state.slots[i].enabled) {
-          s_selected_slot = i;
-          break;
-        }
-      }
-    } else {
-      s_selected_slot = selected_item;
-    }
-    s_edit_slot = s_state.slots[s_selected_slot];
-    if (selected_item == MAIN_ADD_ITEM) s_edit_slot.enabled = true;
-    s_edit_field = selected_item == MAIN_ADD_ITEM ? 1 : 0;
-    show_edit();
-  } else if (s_screen == SCREEN_EDIT) {
+  if (s_screen == SCREEN_EDIT) {
     if (s_edit_field == 0) {
       s_edit_slot.enabled = !s_edit_slot.enabled;
       set_row(0, true, "Enabled", s_edit_slot.enabled ? "ON" : "OFF");
@@ -955,7 +1238,7 @@ static void select_click(ClickRecognizerRef recognizer, void *context) {
 static void select_long_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_MAIN) {
     s_select_long = true;
-    start_sync();
+    start_sync(true);
   }
 }
 
@@ -1006,7 +1289,12 @@ static void back_click(ClickRecognizerRef recognizer, void *context) {
   } else if (s_screen == SCREEN_ALERT) {
     stop_alert_buzz();
     s_active_event_sequence = 0;
-    window_stack_pop(true);
+    show_watchface();
+  } else if (s_screen == SCREEN_MAIN) {
+    show_watchface();
+  } else if (s_screen == SCREEN_SYNC) {
+    s_syncing = false;
+    show_main(NULL);
   } else {
     window_stack_pop(true);
   }
@@ -1047,6 +1335,7 @@ static TextLayer *make_text_layer(GRect frame, GFont font, GTextAlignment alignm
  */
 static void init(void) {
   load_state();
+  load_display_settings();
 
   WakeupId launch_wakeup_id;
   int32_t launch_cookie;
@@ -1058,6 +1347,12 @@ static void init(void) {
   Layer *root = window_get_root_layer(s_window);
   GRect bounds = layer_get_bounds(root);
 
+  s_watchface = make_text_layer(
+    GRect(6, 0, bounds.size.w - 12, bounds.size.h),
+    watchface_font(),
+    watchface_alignment()
+  );
+  layer_add_child(root, text_layer_get_layer(s_watchface));
   s_header = make_text_layer(GRect(0, 0, bounds.size.w, 40), fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD), GTextAlignmentCenter);
   text_layer_set_background_color(s_header, GColorOxfordBlue);
   text_layer_set_text_color(s_header, GColorWhite);
@@ -1072,8 +1367,9 @@ static void init(void) {
   app_message_register_inbox_received(inbox_received);
   app_message_register_outbox_sent(outbox_sent);
   app_message_register_outbox_failed(outbox_failed);
-  app_message_open(128, app_message_outbox_size_maximum());
+  app_message_open(512, 640);
   wakeup_service_subscribe(wakeup_handler);
+  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
 
   if (launched_by_wakeup && launch_cookie >= 0 && launch_cookie < SLOT_COUNT) {
     recover_events_except((int8_t)launch_cookie);
@@ -1081,7 +1377,7 @@ static void init(void) {
   } else {
     recover_events_except(-1);
     schedule_next();
-    show_main(NULL);
+    show_watchface();
   }
   window_stack_push(s_window, true);
 }
@@ -1091,7 +1387,9 @@ static void init(void) {
  */
 static void deinit(void) {
   stop_alert_buzz();
+  tick_timer_service_unsubscribe();
   for (uint8_t i = 0; i < SLOT_COUNT; i++) text_layer_destroy(s_rows[i]);
+  text_layer_destroy(s_watchface);
   text_layer_destroy(s_header);
   text_layer_destroy(s_footer);
   window_destroy(s_window);
