@@ -1,5 +1,6 @@
 #include <pebble.h>
 
+#include "reminder_navigation.h"
 #include "time_words.h"
 
 extern uint32_t MESSAGE_KEY_TYPE;
@@ -34,6 +35,11 @@ extern uint32_t MESSAGE_KEY_SLOT_3_ENABLED;
 #define WATCHFACE_DESCENDER_PADDING 6
 #define REMINDER_DURATION_SECONDS (5 * 60)
 #define REMINDER_BUZZ_INTERVAL_MS (30 * 1000)
+
+_Static_assert(
+  SLOT_COUNT == REMINDER_NAVIGATION_SLOT_COUNT,
+  "Reminder navigation slot count differs from app state"
+);
 
 typedef enum {
   SCREEN_WATCHFACE,
@@ -671,12 +677,11 @@ static void clear_row(uint8_t index) {
  * @returns Number of items in the list.
  */
 static uint8_t build_main_items(uint8_t items[SLOT_COUNT + 1]) {
-  uint8_t count = 0;
-  for (uint8_t i = 0; i < SLOT_COUNT; i++) {
-    if (s_state.slots[i].enabled) items[count++] = i;
+  bool enabled[SLOT_COUNT];
+  for (uint8_t slot = 0; slot < SLOT_COUNT; slot++) {
+    enabled[slot] = s_state.slots[slot].enabled;
   }
-  if (count < SLOT_COUNT) items[count++] = MAIN_ADD_ITEM;
-  return count;
+  return reminder_navigation_build_items(enabled, items);
 }
 
 /**
@@ -1186,8 +1191,8 @@ static void record_outcome(Outcome outcome) {
 /**
  * Handles a SELECT click according to the current screen.
  *
- * Changes the selected edit field, saves valid reminder changes, or records a
- * taken outcome for an active alert.
+ * Opens the reminder list or selected reminder, changes the selected edit
+ * field, saves valid reminder changes, or records a taken outcome for an alert.
  *
  * @param recognizer The button click recogniser.
  * @param context The callback context.
@@ -1197,7 +1202,33 @@ static void select_click(ClickRecognizerRef recognizer, void *context) {
     s_select_long = false;
     return;
   }
-  if (s_screen == SCREEN_EDIT) {
+  if (s_screen == SCREEN_WATCHFACE || s_screen == SCREEN_MAIN) {
+    bool enabled[SLOT_COUNT];
+    for (uint8_t slot = 0; slot < SLOT_COUNT; slot++) {
+      enabled[slot] = s_state.slots[slot].enabled;
+    }
+    ReminderNavigation navigation = {
+      .screen = s_screen == SCREEN_WATCHFACE
+        ? REMINDER_NAVIGATION_TIME
+        : REMINDER_NAVIGATION_MAIN,
+      .main_selection = s_main_selection,
+      .selected_slot = s_selected_slot,
+      .edit_field = s_edit_field,
+      .enable_selected_slot = false,
+    };
+    reminder_navigation_select(&navigation, enabled);
+    s_main_selection = navigation.main_selection;
+    if (navigation.screen == REMINDER_NAVIGATION_MAIN) {
+      show_main(NULL);
+      return;
+    }
+
+    s_selected_slot = navigation.selected_slot;
+    s_edit_field = navigation.edit_field;
+    s_edit_slot = s_state.slots[s_selected_slot];
+    if (navigation.enable_selected_slot) s_edit_slot.enabled = true;
+    show_edit();
+  } else if (s_screen == SCREEN_EDIT) {
     if (s_edit_field == 0) {
       s_edit_slot.enabled = !s_edit_slot.enabled;
       set_row(0, true, "Enabled", s_edit_slot.enabled ? "ON" : "OFF");
