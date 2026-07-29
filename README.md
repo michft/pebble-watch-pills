@@ -4,8 +4,8 @@ Pebble Time 2 (`emery`) watchapp displaying current local time as lowercase
 English number words. Four retained pill reminders interrupt the time display
 when due.
 
-See [Using the app](docs/using-the-app.md) for the Pill Reminder 0.1.2 button
-map, Number Watch 0.2.1 controls, phone synchronisation, and troubleshooting.
+See [Using the app](docs/using-the-app.md) for current controls, phone
+synchronisation, and troubleshooting.
 
 Time uses one word per line. Phrases containing at most three words split long
 teen words at spoken syllable boundary:
@@ -16,8 +16,8 @@ seven       twenty
 -teen       seven
 ```
 
-Watch follows 12/24-hour preference, updates every minute, omits leading `zero`
-for minutes below ten, and omits minutes at `:00`.
+Watch follows 12/24-hour preference, updates every minute, speaks minutes one
+through nine as `o' one` through `o' nine`, and omits minutes at `:00`.
 
 ## Watch controls
 
@@ -25,7 +25,8 @@ for minutes below ten, and omits minutes at `:00`.
 - Reminder list: Up/Down moves; Select edits; hold Select syncs the phone report;
   Back returns to time.
 - Reminder editor: Up/Down chooses a field; Select changes or saves; Back cancels.
-- Reminder alert: Select records Taken; Down records Skipped; Back leaves No response.
+- Reminder alert: upper-right Up acknowledges and records Taken; Back dismisses
+  without changing No response.
 
 ## Settings
 
@@ -33,19 +34,26 @@ Edit reminder times with the watch controls above or open Number Watch settings
 in the rePebble phone app. Phone page also controls:
 
 - four pill reminder times and enabled state
+- time format follows the watch's 12/24-hour system setting
 - horizontal alignment: left, centre, right
 - vertical alignment: top, middle, bottom
 - font size: small, medium, large
 - independent text and background colours
 
-Save sends complete configuration to watch atomically. Enabled reminders must
-remain at least two minutes apart. Watch persists configuration and reschedules
-the next wakeup. Taken means self-reported. Report is not medical record.
+Save sends complete configuration to watch atomically, then requests a fresh
+watch-to-phone report sync. Enabled reminders must remain at least two minutes
+apart. Watch persists configuration and reschedules the next wakeup. Taken
+means self-reported. Report is not medical record.
+
+**Clear phone report** removes phone-local history. Later synchronisation ignores
+retained watch events scheduled before the clear, while accepting new events.
+The watch's retained history is unchanged.
 
 ## Emulator examples
 
 Screenshots are saved in [`docs/screenshots`](docs/screenshots):
 
+- [`emery_screenshot.png`](docs/screenshots/emery_screenshot.png) — default app-store screenshot at `21:23`
 - [`twelve-twenty-seven.png`](docs/screenshots/twelve-twenty-seven.png) — preferred large centred layout
 - [`eight-seventeen.png`](docs/screenshots/eight-seventeen.png) — syllable split
 - [`twelve-thirty.png`](docs/screenshots/twelve-thirty.png)
@@ -87,6 +95,17 @@ Install on Emery emulator:
 
 ```sh
 pebble install --emulator emery build/pebble-watch-pills.pbw
+```
+
+## Local CodeRabbit review
+
+Automatic GitHub reviews are disabled in `.coderabbit.yaml`. Authenticate once,
+then review the current jj working-copy changes manually:
+
+```sh
+cr auth login
+cr auth status
+cr review --plain --type uncommitted --base main
 ```
 
 ## CloudPebble deployment

@@ -51,3 +51,15 @@ void reminder_navigation_select(
   }
   state->screen = REMINDER_NAVIGATION_EDIT;
 }
+
+ReminderAlertAction reminder_navigation_alert_action(
+  ReminderAlertButton button
+) {
+  if (button == REMINDER_ALERT_BUTTON_UP) {
+    return REMINDER_ALERT_ACTION_TAKEN;
+  }
+  if (button == REMINDER_ALERT_BUTTON_BACK) {
+    return REMINDER_ALERT_ACTION_DISMISS;
+  }
+  return REMINDER_ALERT_ACTION_NONE;
+}

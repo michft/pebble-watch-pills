@@ -93,13 +93,23 @@ bool time_words_format(
     if (!write_number(minute, minute_words, sizeof(minute_words))) {
       return false;
     }
-    written = snprintf(
-      buffer,
-      buffer_size,
-      "%s %s",
-      hour_words,
-      minute_words
-    );
+    if (minute < 10) {
+      written = snprintf(
+        buffer,
+        buffer_size,
+        "%s o' %s",
+        hour_words,
+        minute_words
+      );
+    } else {
+      written = snprintf(
+        buffer,
+        buffer_size,
+        "%s %s",
+        hour_words,
+        minute_words
+      );
+    }
   }
 
   if (written < 0 || (size_t)written >= buffer_size) {

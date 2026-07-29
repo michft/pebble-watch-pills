@@ -23,6 +23,7 @@ function defaultState() {
     lastSyncAt: null,
     droppedEvents: 0,
     warning: null,
+    clearedBefore: 0,
   };
 }
 
@@ -44,6 +45,7 @@ function loadState() {
     parsed.lastSyncAt = parsed.lastSyncAt || null;
     parsed.droppedEvents = Number(parsed.droppedEvents) || 0;
     parsed.warning = parsed.warning || null;
+    parsed.clearedBefore = Number(parsed.clearedBefore) || 0;
     return parsed;
   } catch (error) {
     console.log("Phone state load failed");
@@ -156,7 +158,9 @@ function sendSettings(response) {
   });
   Pebble.sendAppMessage(
     message,
-    function () {},
+    function () {
+      requestSync();
+    },
     function () { console.log("Phone settings send failed"); }
   );
 }
@@ -218,7 +222,10 @@ function handleEventBatch(payload) {
   });
 
   payload.events.forEach(function (event) {
-    if (!isValidEvent(event, installId)) {
+    if (
+      !isValidEvent(event, installId)
+      || event.scheduledAt <= state.clearedBefore
+    ) {
       return;
     }
     byIdentity[event.installId + ":" + event.sequence] = event;
@@ -316,6 +323,7 @@ Pebble.addEventListener("webviewclosed", function (event) {
       state.events = [];
       state.droppedEvents = 0;
       state.warning = null;
+      state.clearedBefore = Date.now();
       saveState(state);
     } else if (response.action === "save_settings" && settingsResponseValid(response)) {
       var settingsState = loadState();

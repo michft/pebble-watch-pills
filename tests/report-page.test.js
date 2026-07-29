@@ -43,6 +43,8 @@ test("renders outcome wording, stale state, and escaped report values", () => {
   assert.match(html, /&lt;unsafe&gt;/);
   assert.doesNotMatch(html, /<unsafe>/);
   assert.match(html, /Save settings/);
+  assert.match(html, /then refresh this report/);
+  assert.match(html, /Time format follows the watch's 12\/24-hour system setting/);
   assert.match(html, /Text colour/);
   assert.match(html, /Background colour/);
   assert.match(html, /id=slot-0-time type=time required value='08:00'/);

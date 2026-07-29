@@ -26,9 +26,32 @@ function withReleaseFixture(packageJson, changelog, callback) {
 test("current package version has release notes", () => {
   const metadata = readReleaseMetadata(__dirname + "/..");
 
-  assert.equal(metadata.version, "0.2.1");
+  assert.equal(metadata.version, "0.2.3");
   assert.equal(metadata.tag, `v${metadata.version}`);
   assert.ok(metadata.notes.trim().length > 0);
+});
+
+test("release uploads a correctly sized default Emery screenshot", () => {
+  const root = path.resolve(__dirname, "..");
+  const screenshotPath = path.join(
+    root,
+    "docs",
+    "screenshots",
+    "emery_screenshot.png",
+  );
+  const screenshot = fs.readFileSync(screenshotPath);
+  const workflow = fs.readFileSync(
+    path.join(root, ".github", "workflows", "release.yml"),
+    "utf8",
+  );
+
+  assert.equal(screenshot.subarray(1, 4).toString(), "PNG");
+  assert.equal(screenshot.readUInt32BE(16), 200);
+  assert.equal(screenshot.readUInt32BE(20), 228);
+  assert.match(
+    workflow,
+    /--screenshots docs\/screenshots\/emery_screenshot\.png/,
+  );
 });
 
 test("extracts only the requested release notes", () => {
