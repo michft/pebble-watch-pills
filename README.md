@@ -49,6 +49,10 @@ means self-reported. Report is not medical record.
 retained watch events scheduled before the clear, while accepting new events.
 The watch's retained history is unchanged.
 
+**Clear phone report** removes phone-local history. Later synchronisation ignores
+retained watch events scheduled before the clear, while accepting new events.
+The watch's retained history is unchanged.
+
 ## Emulator examples
 
 Screenshots are saved in [`docs/screenshots`](docs/screenshots):
