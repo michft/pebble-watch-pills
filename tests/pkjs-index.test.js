@@ -85,3 +85,60 @@ test("cleared phone history stays clear when retained watch events resync", () =
     delete global.Pebble;
   }
 });
+
+test("saving phone settings requests a full watch sync after delivery", () => {
+  const handlers = {};
+  const sent = [];
+  let stored = null;
+
+  global.localStorage = {
+    getItem() {
+      return stored;
+    },
+    setItem(key, value) {
+      if (key === STORAGE_KEY) stored = value;
+    },
+  };
+  global.Pebble = {
+    addEventListener(name, handler) {
+      handlers[name] = handler;
+    },
+    sendAppMessage(message, success) {
+      sent.push({ message, success });
+    },
+  };
+
+  const indexPath = require.resolve("../src/pkjs/index.js");
+  delete require.cache[indexPath];
+  try {
+    require(indexPath);
+    handlers.webviewclosed({
+      response: encodeURIComponent(JSON.stringify({
+        action: "save_settings",
+        display: {
+          horizontal: 1,
+          vertical: 1,
+          fontSize: 2,
+          textColor: 0,
+          backgroundColor: 1,
+        },
+        slots: [
+          { id: 0, hour: 8, minute: 0, enabled: true },
+          { id: 1, hour: 12, minute: 0, enabled: true },
+          { id: 2, hour: 18, minute: 0, enabled: true },
+          { id: 3, hour: 22, minute: 0, enabled: true },
+        ],
+      })),
+    });
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].message.TYPE, 8);
+    sent[0].success();
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1].message.TYPE, 7);
+  } finally {
+    delete require.cache[indexPath];
+    delete global.localStorage;
+    delete global.Pebble;
+  }
+});

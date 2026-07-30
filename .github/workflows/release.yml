@@ -121,6 +121,7 @@ jobs:
             --version "${RELEASE_VERSION}" \
             --is-published \
             --no-gif-all-platforms \
+            --screenshots docs/screenshots/emery_screenshot.png \
             --non-interactive
 
       - name: Create GitHub Release

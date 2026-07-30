@@ -20,6 +20,19 @@ typedef struct {
   bool enable_selected_slot;
 } ReminderNavigation;
 
+typedef enum {
+  REMINDER_ALERT_BUTTON_UP,
+  REMINDER_ALERT_BUTTON_SELECT,
+  REMINDER_ALERT_BUTTON_DOWN,
+  REMINDER_ALERT_BUTTON_BACK
+} ReminderAlertButton;
+
+typedef enum {
+  REMINDER_ALERT_ACTION_NONE,
+  REMINDER_ALERT_ACTION_TAKEN,
+  REMINDER_ALERT_ACTION_DISMISS
+} ReminderAlertAction;
+
 uint8_t reminder_navigation_build_items(
   const bool enabled[REMINDER_NAVIGATION_SLOT_COUNT],
   uint8_t items[REMINDER_NAVIGATION_SLOT_COUNT + 1]
@@ -28,4 +41,8 @@ uint8_t reminder_navigation_build_items(
 void reminder_navigation_select(
   ReminderNavigation *state,
   const bool enabled[REMINDER_NAVIGATION_SLOT_COUNT]
+);
+
+ReminderAlertAction reminder_navigation_alert_action(
+  ReminderAlertButton button
 );

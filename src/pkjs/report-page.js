@@ -176,7 +176,7 @@ function settingsSection(settings) {
     [8, "Purple"], [9, "Magenta"],
   ];
   return "<section class=card><h2>Watch settings</h2>"
-    + "<p class=muted>Saved settings transfer to watch.</p>"
+    + "<p class=muted>Saved settings transfer to watch, then refresh this report.</p>"
     + "<p class=muted>Time format follows the watch's 12/24-hour system setting.</p>"
     + "<fieldset><legend>Reminders</legend>" + reminderRows + "</fieldset>"
     + "<fieldset><legend>Text position</legend><label for=horizontal>Horizontal</label>"

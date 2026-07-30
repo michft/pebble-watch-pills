@@ -51,8 +51,28 @@ static void expect_add_opens_first_disabled_reminder_time(void) {
   assert(state.enable_selected_slot);
 }
 
+static void expect_only_up_acknowledges_alert(void) {
+  assert(
+    reminder_navigation_alert_action(REMINDER_ALERT_BUTTON_UP)
+    == REMINDER_ALERT_ACTION_TAKEN
+  );
+  assert(
+    reminder_navigation_alert_action(REMINDER_ALERT_BUTTON_SELECT)
+    == REMINDER_ALERT_ACTION_NONE
+  );
+  assert(
+    reminder_navigation_alert_action(REMINDER_ALERT_BUTTON_DOWN)
+    == REMINDER_ALERT_ACTION_NONE
+  );
+  assert(
+    reminder_navigation_alert_action(REMINDER_ALERT_BUTTON_BACK)
+    == REMINDER_ALERT_ACTION_DISMISS
+  );
+}
+
 int main(void) {
   expect_time_display_opens_reminders();
   expect_existing_reminder_opens_enabled_field();
   expect_add_opens_first_disabled_reminder_time();
+  expect_only_up_acknowledges_alert();
 }

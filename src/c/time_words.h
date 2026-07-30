@@ -6,8 +6,8 @@
 /**
  * Formats a local time as lowercase number words.
  *
- * Minutes below ten omit a leading "zero", and an exact hour omits minutes.
- * Examples: 08:17 -> "eight seventeen", 01:06 -> "one six".
+ * Minutes from one through nine use spoken "o'", and an exact hour omits minutes.
+ * Examples: 08:17 -> "eight seventeen", 01:06 -> "one o' six".
  */
 bool time_words_format(
   int hour,

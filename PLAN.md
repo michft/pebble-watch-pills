@@ -1,6 +1,6 @@
 # Number Watch with Pill Reminders — Implemented Plan
 
-Status: blocked on reminder outcome interaction decision
+Status: implemented; current feature release is 0.2.3
 
 Target: Pebble Time 2 / rePebble `emery`
 
@@ -22,7 +22,7 @@ watchfaces, so prior button outcome flow cannot be used unchanged.
 - Required examples:
   - `08:17` → `eight / seven / -teen`
   - `12:27` → `twelve / twenty / seven`
-  - `01:06` → `one / six`
+  - `01:06` → `one / o' / six`
 - Phone config controls left/centre/right, top/middle/bottom, three font sizes,
   text colour, and background colour.
 
@@ -33,9 +33,9 @@ watchfaces, so prior button outcome flow cannot be used unchanged.
 - Watch rejects invalid or closer-than-two-minute reminder combinations.
 - Accepted changes persist and reschedule wakeup immediately.
 - Alert vibrates for five-minute window.
-- Taken, Skipped, No response state model and phone-local 90-day report retained.
-- Outcome input path remains open: phone entry, accelerometer gesture, or return
-  to watchapp button controls.
+- Taken and No response state model and phone-local 90-day report retained.
+- Upper-right Up acknowledges an active alert and records Taken. Back dismisses
+  without changing No response.
 
 ## Architecture
 
@@ -46,7 +46,7 @@ phone settings/report
   -> persisted watch state + wakeup reschedule
 
 minute tick -> time_words.c -> watchface TextLayer
-wakeup      -> reminder alert -> pending outcome interaction decision
+wakeup      -> reminder alert -> Up acknowledgement records Taken
 ```
 
 `time_words.c` remains Pebble-independent for host C tests. Reminder persistence
@@ -59,4 +59,4 @@ format stays version 2; display config uses separate persistence key.
 - `git diff --check`
 - Emery screenshots saved under `docs/screenshots/`
 - Live Emery wakeup captured as `pill-reminder-alert.png`
-- Emery confirms watchface Select is intercepted by Pebble OS
+- Button-capable watchapp keeps Back conventional and uses Up to acknowledge alerts.

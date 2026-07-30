@@ -158,7 +158,9 @@ function sendSettings(response) {
   });
   Pebble.sendAppMessage(
     message,
-    function () {},
+    function () {
+      requestSync();
+    },
     function () { console.log("Phone settings send failed"); }
   );
 }

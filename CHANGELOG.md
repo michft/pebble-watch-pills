@@ -2,6 +2,16 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.3] - 2026-07-30
+
+- Speak single-digit minutes as `o' one` through `o' nine`, distinguishing
+  times such as `20:02` from `22:00`.
+- Replace reminder outcome controls with one upper-right Up acknowledgement
+  that records Taken.
+- Start a full watch-to-phone sync after phone settings reach the watch.
+- Upload a centred white-on-black `21:23` Emery screenshot with app-store
+  releases.
+
 ## [0.2.2] - 2026-07-28
 
 - Keep cleared phone report history excluded from later watch resyncs, and

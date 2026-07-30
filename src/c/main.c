@@ -795,7 +795,7 @@ static void show_edit(void) {
 }
 
 /**
- * Displays the alert screen for a reminder slot and its available outcomes.
+ * Displays the acknowledgement-only alert screen for a reminder slot.
  *
  * @param slot_id Index of the reminder slot to display.
  */
@@ -808,10 +808,10 @@ static void show_alert(uint8_t slot_id) {
   snprintf(s_header_text, sizeof(s_header_text), "TAKE PILL %u", slot_id + 1);
   set_header_text();
   set_row(0, false, "Time", time_buffer);
-  set_row(1, true, "SELECT", "TAKEN");
-  set_row(2, false, "DOWN", "SKIPPED");
-  set_row(3, false, "BACK", "NO RESPONSE");
-  snprintf(s_footer_text, sizeof(s_footer_text), "Self-report outcome");
+  set_row(1, true, "UP", "ACKNOWLEDGE");
+  clear_row(2);
+  clear_row(3);
+  snprintf(s_footer_text, sizeof(s_footer_text), "Records Taken");
   set_footer_text();
 }
 
@@ -1188,11 +1188,22 @@ static void record_outcome(Outcome outcome) {
   show_watchface();
 }
 
+static void handle_alert_button(ReminderAlertButton button) {
+  ReminderAlertAction action = reminder_navigation_alert_action(button);
+  if (action == REMINDER_ALERT_ACTION_TAKEN) {
+    record_outcome(OUTCOME_TAKEN);
+  } else if (action == REMINDER_ALERT_ACTION_DISMISS) {
+    stop_alert_buzz();
+    s_active_event_sequence = 0;
+    show_watchface();
+  }
+}
+
 /**
  * Handles a SELECT click according to the current screen.
  *
  * Opens the reminder list or selected reminder, changes the selected edit
- * field, saves valid reminder changes, or records a taken outcome for an alert.
+ * field or saves valid reminder changes.
  *
  * @param recognizer The button click recogniser.
  * @param context The callback context.
@@ -1259,7 +1270,7 @@ static void select_click(ClickRecognizerRef recognizer, void *context) {
       return;
     }
   } else if (s_screen == SCREEN_ALERT) {
-    record_outcome(OUTCOME_TAKEN);
+    handle_alert_button(REMINDER_ALERT_BUTTON_SELECT);
   }
 }
 
@@ -1277,7 +1288,9 @@ static void select_long_click(ClickRecognizerRef recognizer, void *context) {
  * Moves the current selection to the previous slot or edit field.
  */
 static void up_click(ClickRecognizerRef recognizer, void *context) {
-  if (s_screen == SCREEN_MAIN) {
+  if (s_screen == SCREEN_ALERT) {
+    handle_alert_button(REMINDER_ALERT_BUTTON_UP);
+  } else if (s_screen == SCREEN_MAIN) {
     uint8_t items[SLOT_COUNT + 1];
     uint8_t item_count = build_main_items(items);
     s_main_selection = (s_main_selection + item_count - 1) % item_count;
@@ -1296,7 +1309,7 @@ static void up_click(ClickRecognizerRef recognizer, void *context) {
  */
 static void down_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_ALERT) {
-    record_outcome(OUTCOME_SKIPPED);
+    handle_alert_button(REMINDER_ALERT_BUTTON_DOWN);
   } else if (s_screen == SCREEN_MAIN) {
     uint8_t items[SLOT_COUNT + 1];
     uint8_t item_count = build_main_items(items);
@@ -1318,9 +1331,7 @@ static void back_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_EDIT) {
     show_main("Edit cancelled");
   } else if (s_screen == SCREEN_ALERT) {
-    stop_alert_buzz();
-    s_active_event_sequence = 0;
-    show_watchface();
+    handle_alert_button(REMINDER_ALERT_BUTTON_BACK);
   } else if (s_screen == SCREEN_MAIN) {
     show_watchface();
   } else if (s_screen == SCREEN_SYNC) {
