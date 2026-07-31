@@ -1,6 +1,6 @@
 # Number Watch with Pill Reminders — Implemented Plan
 
-Status: implemented; current feature release is 0.2.3
+Status: implemented; current feature release is 0.2.4
 
 Target: Pebble Time 2 / rePebble `emery`
 
@@ -8,14 +8,16 @@ Date: 2026-07-22
 
 ## Product
 
-Watchface displays current time as named numbers. Existing four-slot pill
-reminder, outcome history, persistence, wakeups, and phone report remain intact.
+Watchapp displays local time or a fixed UTC offset as named numbers. Existing
+four-slot pill reminder, outcome history, persistence, wakeups, and phone report
+remain intact.
 Reminder alert interrupts watchface. Pebble OS reserves buttons for true
 watchfaces, so prior button outcome flow cannot be used unchanged.
 
 ## Display rules
 
 - Follow watch 12/24-hour preference.
+- Allow local time or a fixed UTC offset for display; reminders stay local.
 - Update each minute.
 - Place every space-separated word on new line.
 - When phrase has at most three words, split long `-teen` words at syllable.

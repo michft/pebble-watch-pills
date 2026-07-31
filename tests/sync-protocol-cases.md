@@ -11,6 +11,10 @@
 - Open report disconnected. Confirm last cached report and stale timestamp.
 - Verify report loads without network requests or external resources.
 - Verify phone report contains no pill data in console logs.
-- Open phone settings. Confirm latest watch snapshot populates all reminders, position, size, and colours.
+- Open phone settings. Confirm latest watch snapshot populates all reminders,
+  displayed-time source and offset, position, size, and colours.
 - Save phone settings. Confirm watch applies accepted values, then sends a fresh
   settings snapshot, retained events, and sync-complete message.
+- Choose fixed UTC+05:45. Confirm the word-time display changes by that offset,
+  12/24-hour formatting still follows the watch setting, and reminders continue
+  to fire at their configured watch-local times.

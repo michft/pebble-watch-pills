@@ -1,8 +1,8 @@
 # Number Watch with Pill Reminders
 
-Pebble Time 2 (`emery`) watchapp displaying current local time as lowercase
-English number words. Four retained pill reminders interrupt the time display
-when due.
+Pebble Time 2 (`emery`) watchapp displaying local time or a fixed UTC offset as
+lowercase English number words. Four retained pill reminders interrupt the time
+display when due.
 
 See [Using the app](docs/using-the-app.md) for current controls, phone
 synchronisation, and troubleshooting.
@@ -16,8 +16,9 @@ seven       twenty
 -teen       seven
 ```
 
-Watch follows 12/24-hour preference, updates every minute, speaks minutes one
-through nine as `o' one` through `o' nine`, and omits minutes at `:00`.
+Watch follows its 12/24-hour system preference, updates every minute, speaks
+minutes one through nine as `o' one` through `o' nine`, and omits minutes at
+`:00`.
 
 ## Watch controls
 
@@ -34,6 +35,8 @@ Edit reminder times with the watch controls above or open Number Watch settings
 in the rePebble phone app. Phone page also controls:
 
 - four pill reminder times and enabled state
+- displayed time: watch-local time or a fixed UTC offset from UTC-12:00 through
+  UTC+14:00 in 15-minute steps
 - time format follows the watch's 12/24-hour system setting
 - horizontal alignment: left, centre, right
 - vertical alignment: top, middle, bottom
@@ -42,12 +45,10 @@ in the rePebble phone app. Phone page also controls:
 
 Save sends complete configuration to watch atomically, then requests a fresh
 watch-to-phone report sync. Enabled reminders must remain at least two minutes
-apart. Watch persists configuration and reschedules the next wakeup. Taken
-means self-reported. Report is not medical record.
-
-**Clear phone report** removes phone-local history. Later synchronisation ignores
-retained watch events scheduled before the clear, while accepting new events.
-The watch's retained history is unchanged.
+apart. A fixed UTC offset does not adjust for daylight saving time and changes
+only the word-time display; reminder schedules remain in the watch's local
+time. Watch persists configuration and reschedules the next wakeup. Taken means
+self-reported. Report is not medical record.
 
 **Clear phone report** removes phone-local history. Later synchronisation ignores
 retained watch events scheduled before the clear, while accepting new events.
