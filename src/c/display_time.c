@@ -1,3 +1,7 @@
+#ifdef PBL_SDK_3
+#include <pebble.h>
+#endif
+
 #include "display_time.h"
 
 #include <stddef.h>
