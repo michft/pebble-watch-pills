@@ -1,5 +1,6 @@
 #include <pebble.h>
 
+#include "display_time.h"
 #include "reminder_navigation.h"
 #include "time_words.h"
 
@@ -10,6 +11,8 @@ extern uint32_t MESSAGE_KEY_V_ALIGN;
 extern uint32_t MESSAGE_KEY_FONT_SIZE;
 extern uint32_t MESSAGE_KEY_TEXT_COLOR;
 extern uint32_t MESSAGE_KEY_BACKGROUND_COLOR;
+extern uint32_t MESSAGE_KEY_USE_LOCAL_TIME;
+extern uint32_t MESSAGE_KEY_UTC_OFFSET_MINUTES;
 extern uint32_t MESSAGE_KEY_SLOT_0_HOUR;
 extern uint32_t MESSAGE_KEY_SLOT_0_MINUTE;
 extern uint32_t MESSAGE_KEY_SLOT_0_ENABLED;
@@ -31,7 +34,8 @@ extern uint32_t MESSAGE_KEY_SLOT_3_ENABLED;
 #define PERSIST_KEY_META 1
 #define PERSIST_KEY_EVENTS_BASE 2
 #define PERSIST_KEY_DISPLAY_SETTINGS 100
-#define DISPLAY_SETTINGS_VERSION 1
+#define DISPLAY_SETTINGS_LEGACY_VERSION 1
+#define DISPLAY_SETTINGS_VERSION 2
 #define WATCHFACE_DESCENDER_PADDING 6
 #define REMINDER_DURATION_SECONDS (5 * 60)
 #define REMINDER_BUZZ_INTERVAL_MS (30 * 1000)
@@ -80,6 +84,17 @@ typedef struct {
   uint8_t font_size;
   uint8_t text_color;
   uint8_t background_color;
+} DisplaySettingsV1;
+
+typedef struct {
+  uint16_t version;
+  uint8_t horizontal_alignment;
+  uint8_t vertical_alignment;
+  uint8_t font_size;
+  uint8_t text_color;
+  uint8_t background_color;
+  uint8_t use_local_time;
+  int16_t utc_offset_minutes;
 } DisplaySettings;
 
 typedef struct {
@@ -310,6 +325,19 @@ static bool display_settings_valid(const DisplaySettings *settings) {
     && settings->vertical_alignment <= VERTICAL_BOTTOM
     && settings->font_size <= FONT_LARGE
     && settings->text_color <= 9
+    && settings->background_color <= 9
+    && settings->use_local_time <= 1
+    && settings->utc_offset_minutes >= DISPLAY_TIME_MIN_OFFSET_MINUTES
+    && settings->utc_offset_minutes <= DISPLAY_TIME_MAX_OFFSET_MINUTES
+    && settings->utc_offset_minutes % DISPLAY_TIME_OFFSET_STEP_MINUTES == 0;
+}
+
+static bool display_settings_v1_valid(const DisplaySettingsV1 *settings) {
+  return settings->version == DISPLAY_SETTINGS_LEGACY_VERSION
+    && settings->horizontal_alignment <= HORIZONTAL_RIGHT
+    && settings->vertical_alignment <= VERTICAL_BOTTOM
+    && settings->font_size <= FONT_LARGE
+    && settings->text_color <= 9
     && settings->background_color <= 9;
 }
 
@@ -325,8 +353,8 @@ static void save_display_settings(void) {
 }
 
 static void load_display_settings(void) {
-  bool restored = persist_get_size(PERSIST_KEY_DISPLAY_SETTINGS)
-      == (int)sizeof(s_display_settings)
+  int stored_size = persist_get_size(PERSIST_KEY_DISPLAY_SETTINGS);
+  bool restored = stored_size == (int)sizeof(s_display_settings)
     && persist_read_data(
       PERSIST_KEY_DISPLAY_SETTINGS,
       &s_display_settings,
@@ -335,6 +363,29 @@ static void load_display_settings(void) {
     && display_settings_valid(&s_display_settings);
   if (restored) return;
 
+  DisplaySettingsV1 legacy;
+  bool migrated = stored_size == (int)sizeof(legacy)
+    && persist_read_data(
+      PERSIST_KEY_DISPLAY_SETTINGS,
+      &legacy,
+      sizeof(legacy)
+    ) == (int)sizeof(legacy)
+    && display_settings_v1_valid(&legacy);
+  if (migrated) {
+    s_display_settings = (DisplaySettings) {
+      .version = DISPLAY_SETTINGS_VERSION,
+      .horizontal_alignment = legacy.horizontal_alignment,
+      .vertical_alignment = legacy.vertical_alignment,
+      .font_size = legacy.font_size,
+      .text_color = legacy.text_color,
+      .background_color = legacy.background_color,
+      .use_local_time = 1,
+      .utc_offset_minutes = 0,
+    };
+    save_display_settings();
+    return;
+  }
+
   s_display_settings = (DisplaySettings) {
     .version = DISPLAY_SETTINGS_VERSION,
     .horizontal_alignment = HORIZONTAL_CENTER,
@@ -342,6 +393,8 @@ static void load_display_settings(void) {
     .font_size = FONT_LARGE,
     .text_color = 0,
     .background_color = 1,
+    .use_local_time = 1,
+    .utc_offset_minutes = 0,
   };
   save_display_settings();
 }
@@ -394,13 +447,33 @@ static void show_reminder_layers(void) {
   window_set_background_color(s_window, GColorWhite);
 }
 
+static bool current_display_time(int *hour, int *minute) {
+  time_t now = time(NULL);
+  if (!s_display_settings.use_local_time) {
+    return display_time_fixed_parts(
+      now,
+      s_display_settings.utc_offset_minutes,
+      hour,
+      minute
+    );
+  }
+
+  struct tm *local = localtime(&now);
+  if (local == NULL) return false;
+  *hour = local->tm_hour;
+  *minute = local->tm_min;
+  return true;
+}
+
 static void update_watchface(void) {
   if (!s_watchface) return;
-  time_t now = time(NULL);
-  struct tm *local = localtime(&now);
-  if (!time_words_format_lines(
-    local->tm_hour,
-    local->tm_min,
+  int hour;
+  int minute;
+  if (
+    !current_display_time(&hour, &minute)
+    || !time_words_format_lines(
+    hour,
+    minute,
     clock_is_24h_style(),
     s_watchface_text,
     sizeof(s_watchface_text)
@@ -966,7 +1039,7 @@ static void send_payload(int32_t type, const char *payload) {
 }
 
 static void send_settings_snapshot(void) {
-  static char payload[600];
+  static char payload[700];
   char install_id[16];
   snprintf(install_id, sizeof(install_id), "%08lx", (unsigned long)s_state.install_id);
   snprintf(
@@ -974,7 +1047,8 @@ static void send_settings_snapshot(void) {
     sizeof(payload),
     "{\"installId\":\"%s\",\"revision\":%lu,\"droppedEvents\":%u,\"hour12\":%s,"
     "\"display\":{\"horizontal\":%u,\"vertical\":%u,\"fontSize\":%u,"
-    "\"textColor\":%u,\"backgroundColor\":%u},\"slots\":["
+    "\"textColor\":%u,\"backgroundColor\":%u,\"useLocalTime\":%s,"
+    "\"utcOffsetMinutes\":%d},\"slots\":["
     "{\"id\":0,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
     "{\"id\":1,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
     "{\"id\":2,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
@@ -988,6 +1062,8 @@ static void send_settings_snapshot(void) {
     s_display_settings.font_size,
     s_display_settings.text_color,
     s_display_settings.background_color,
+    s_display_settings.use_local_time ? "true" : "false",
+    s_display_settings.utc_offset_minutes,
     s_state.slots[0].hour, s_state.slots[0].minute, s_state.slots[0].enabled ? "true" : "false",
     s_state.slots[1].hour, s_state.slots[1].minute, s_state.slots[1].enabled ? "true" : "false",
     s_state.slots[2].hour, s_state.slots[2].minute, s_state.slots[2].enabled ? "true" : "false",
@@ -1111,6 +1187,20 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
     }
     display_values[index] = value->value->int32;
   }
+  Tuple *use_local_time = dict_find(iterator, MESSAGE_KEY_USE_LOCAL_TIME);
+  Tuple *utc_offset_minutes = dict_find(iterator, MESSAGE_KEY_UTC_OFFSET_MINUTES);
+  if (
+    !use_local_time
+    || !utc_offset_minutes
+    || use_local_time->value->int32 < 0
+    || use_local_time->value->int32 > 1
+    || utc_offset_minutes->value->int32 < DISPLAY_TIME_MIN_OFFSET_MINUTES
+    || utc_offset_minutes->value->int32 > DISPLAY_TIME_MAX_OFFSET_MINUTES
+    || utc_offset_minutes->value->int32 % DISPLAY_TIME_OFFSET_STEP_MINUTES != 0
+  ) {
+    send_settings_snapshot();
+    return;
+  }
 
   const uint32_t hour_keys[SLOT_COUNT] = {
     MESSAGE_KEY_SLOT_0_HOUR, MESSAGE_KEY_SLOT_1_HOUR,
@@ -1154,6 +1244,8 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   s_display_settings.font_size = (uint8_t)display_values[2];
   s_display_settings.text_color = (uint8_t)display_values[3];
   s_display_settings.background_color = (uint8_t)display_values[4];
+  s_display_settings.use_local_time = (uint8_t)use_local_time->value->int32;
+  s_display_settings.utc_offset_minutes = (int16_t)utc_offset_minutes->value->int32;
   s_state.settings_revision++;
   save_display_settings();
   schedule_next();

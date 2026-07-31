@@ -154,7 +154,18 @@ function settingsSection(settings) {
     fontSize: 2,
     textColor: 0,
     backgroundColor: 1,
+    useLocalTime: true,
+    utcOffsetMinutes: 0,
   };
+  var useLocalTime = typeof display.useLocalTime === "boolean"
+    ? display.useLocalTime
+    : true;
+  var utcOffsetMinutes = Number.isInteger(display.utcOffsetMinutes)
+    && display.utcOffsetMinutes >= -12 * 60
+    && display.utcOffsetMinutes <= 14 * 60
+    && display.utcOffsetMinutes % 15 === 0
+    ? display.utcOffsetMinutes
+    : 0;
   function options(values, selected) {
     return values.map(function (entry) {
       return "<option value=" + entry[0]
@@ -175,10 +186,26 @@ function settingsSection(settings) {
     [4, "Yellow"], [5, "Green"], [6, "Cyan"], [7, "Blue"],
     [8, "Purple"], [9, "Magenta"],
   ];
+  var utcOffsets = [];
+  for (var offset = -12 * 60; offset <= 14 * 60; offset += 15) {
+    var sign = offset < 0 ? "-" : "+";
+    var absolute = Math.abs(offset);
+    utcOffsets.push([
+      offset,
+      "UTC" + sign + pad2(Math.floor(absolute / 60)) + ":" + pad2(absolute % 60),
+    ]);
+  }
   return "<section class=card><h2>Watch settings</h2>"
     + "<p class=muted>Saved settings transfer to watch, then refresh this report.</p>"
     + "<p class=muted>Time format follows the watch's 12/24-hour system setting.</p>"
     + "<fieldset><legend>Reminders</legend>" + reminderRows + "</fieldset>"
+    + "<fieldset><legend>Displayed time</legend><label for=time-source>Time source</label>"
+    + "<select id=time-source onchange=updateTimeSource()>"
+    + options([["local", "Local time"], ["fixed", "Fixed UTC offset"]], useLocalTime ? "local" : "fixed")
+    + "</select><label for=utc-offset>UTC offset</label><select id=utc-offset>"
+    + options(utcOffsets, utcOffsetMinutes) + "</select>"
+    + "<p class=muted>Fixed offsets do not adjust for daylight saving. "
+    + "Reminder schedules remain on watch local time.</p></fieldset>"
     + "<fieldset><legend>Text position</legend><label for=horizontal>Horizontal</label>"
     + "<select id=horizontal>" + options([[0, "Left"], [1, "Center"], [2, "Right"]], display.horizontal) + "</select>"
     + "<label for=vertical>Vertical</label><select id=vertical>"
@@ -251,8 +278,10 @@ exports.buildReportPage = function buildReportPage(state) {
     + "<button class=danger onclick=clearHistory()>Clear phone report</button>"
     + "<button class=close onclick=closeReport()>Close</button>"
     + "<script>function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
-    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}closeWith({action:'save_settings',display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:parseInt(document.getElementById('text-color').value,10),backgroundColor:parseInt(document.getElementById('background-color').value,10)},slots:slots})}"
+    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}closeWith({action:'save_settings',display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:parseInt(document.getElementById('text-color').value,10),backgroundColor:parseInt(document.getElementById('background-color').value,10),useLocalTime:document.getElementById('time-source').value==='local',utcOffsetMinutes:parseInt(document.getElementById('utc-offset').value,10)},slots:slots})}"
     + "function clearHistory(){if(confirm('Clear phone report history? This cannot be undone.'))closeWith({action:'clear_history'})}"
-    + "function closeReport(){closeWith({action:'close'})}</script>"
+    + "function closeReport(){closeWith({action:'close'})}"
+    + "function updateTimeSource(){document.getElementById('utc-offset').disabled=document.getElementById('time-source').value==='local'}"
+    + "updateTimeSource()</script>"
     + "</main></body></html>";
 };

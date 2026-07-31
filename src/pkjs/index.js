@@ -110,6 +110,9 @@ function settingsResponseValid(response) {
     || !integerInRange(response.display.fontSize, 0, 2)
     || !integerInRange(response.display.textColor, 0, 9)
     || !integerInRange(response.display.backgroundColor, 0, 9)
+    || typeof response.display.useLocalTime !== "boolean"
+    || !integerInRange(response.display.utcOffsetMinutes, -12 * 60, 14 * 60)
+    || response.display.utcOffsetMinutes % 15 !== 0
   ) {
     return false;
   }
@@ -150,6 +153,8 @@ function sendSettings(response) {
     FONT_SIZE: response.display.fontSize,
     TEXT_COLOR: response.display.textColor,
     BACKGROUND_COLOR: response.display.backgroundColor,
+    USE_LOCAL_TIME: response.display.useLocalTime ? 1 : 0,
+    UTC_OFFSET_MINUTES: response.display.utcOffsetMinutes,
   };
   response.slots.forEach(function (slot, index) {
     message["SLOT_" + index + "_HOUR"] = slot.hour;

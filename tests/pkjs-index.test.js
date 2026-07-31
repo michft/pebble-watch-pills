@@ -121,6 +121,8 @@ test("saving phone settings requests a full watch sync after delivery", () => {
           fontSize: 2,
           textColor: 0,
           backgroundColor: 1,
+          useLocalTime: false,
+          utcOffsetMinutes: 345,
         },
         slots: [
           { id: 0, hour: 8, minute: 0, enabled: true },
@@ -133,6 +135,8 @@ test("saving phone settings requests a full watch sync after delivery", () => {
 
     assert.equal(sent.length, 1);
     assert.equal(sent[0].message.TYPE, 8);
+    assert.equal(sent[0].message.USE_LOCAL_TIME, 0);
+    assert.equal(sent[0].message.UTC_OFFSET_MINUTES, 345);
     sent[0].success();
     assert.equal(sent.length, 2);
     assert.equal(sent[1].message.TYPE, 7);

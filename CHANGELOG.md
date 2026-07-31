@@ -2,6 +2,13 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.4] - 2026-07-31
+
+- Add a phone setting to display local time or a fixed UTC offset from UTC-12:00
+  through UTC+14:00 in 15-minute steps.
+- Keep reminder schedules in watch-local time and preserve existing display
+  preferences when stored settings migrate.
+
 ## [0.2.3] - 2026-07-30
 
 - Speak single-digit minutes as `o' one` through `o' nine`, distinguishing
