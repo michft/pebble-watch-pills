@@ -40,3 +40,10 @@ test("native Select navigation initializes reminder editing state", () => {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("normal time Down toggles alternate timezone feedback", () => {
+  const source = fs.readFileSync(path.join(root, "src/c/main.c"), "utf8");
+
+  assert.match(source, /s_screen == SCREEN_WATCHFACE[\s\S]+s_show_alternate_time = !s_show_alternate_time;[\s\S]+show_timezone_feedback\(\)/);
+  assert.match(source, /type->value->int32 == 9[\s\S]+read_alternate_settings/);
+});

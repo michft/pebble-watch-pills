@@ -25,8 +25,12 @@ test("renders outcome wording, stale state, and escaped report values", () => {
         fontSize: 1,
         textColor: 5,
         backgroundColor: 1,
-        useLocalTime: false,
-        utcOffsetMinutes: 345,
+      },
+      alternate: {
+        timeZone: "Europe/London",
+        label: "LONDON",
+        textColor: 1,
+        backgroundColor: 4,
       },
       slots: [
         { id: 0, hour: 8, minute: 0, enabled: true },
@@ -47,10 +51,11 @@ test("renders outcome wording, stale state, and escaped report values", () => {
   assert.match(html, /Save settings/);
   assert.match(html, /then refresh this report/);
   assert.match(html, /Time format follows the watch's 12\/24-hour system setting/);
-  assert.match(html, /value=fixed selected>Fixed UTC offset/);
-  assert.match(html, /value=345 selected>UTC\+05:45/);
-  assert.match(html, /Fixed offsets do not adjust for daylight saving/);
-  assert.match(html, /Reminder schedules remain on watch local time/);
+  assert.match(html, /Second timezone/);
+  assert.match(html, /value='Europe\/London' selected>Europe\/London/);
+  assert.match(html, /id=alternate-label type=text[^>]+value='LONDON'/);
+  assert.match(html, /Down switches between phone-local time/);
+  assert.match(html, /Phone refreshes daylight-saving data/);
   assert.match(html, /Text colour/);
   assert.match(html, /Background colour/);
   assert.match(html, /id=slot-0-time type=time required value='08:00'/);
@@ -58,31 +63,25 @@ test("renders outcome wording, stale state, and escaped report values", () => {
   assert.match(html, /Enabled reminders need at least a two minute gap/);
 });
 
-test("falls back to UTC+00:00 for invalid fixed offsets", () => {
-  [
-    -12 * 60 - 1,
-    14 * 60 + 1,
-    5 * 60 + 46,
-  ].forEach((utcOffsetMinutes) => {
-    const html = buildReportPage({
-      events: [],
-      settings: {
-        display: {
-          horizontal: 1,
-          vertical: 1,
-          fontSize: 2,
-          textColor: 0,
-          backgroundColor: 1,
-          useLocalTime: false,
-          utcOffsetMinutes,
-        },
-        slots: [],
+test("falls back to UTC second timezone and contrasting colours", () => {
+  const html = buildReportPage({
+    events: [],
+    settings: {
+      display: {
+        horizontal: 1,
+        vertical: 1,
+        fontSize: 2,
+        textColor: 0,
+        backgroundColor: 1,
       },
-      lastSyncAt: null,
-      droppedEvents: 0,
-      warning: null,
-    });
-
-    assert.match(html, /value=0 selected>UTC\+00:00/);
+      slots: [],
+    },
+    lastSyncAt: null,
+    droppedEvents: 0,
+    warning: null,
   });
+
+  assert.match(html, /value='UTC' selected>UTC/);
+  assert.match(html, /id=alternate-text-color><option value=0>White<\/option><option value=1 selected>Black/);
+  assert.match(html, /id=alternate-background-color>[^]*<option value=4 selected>Yellow/);
 });

@@ -1,8 +1,8 @@
 # Number Watch with Pill Reminders
 
-Pebble Time 2 (`emery`) watchapp displaying local time or a fixed UTC offset as
-lowercase English number words. Four retained pill reminders interrupt the time
-display when due.
+Pebble Time 2 (`emery`) watchapp displaying phone-local time or a named second
+timezone as lowercase English number words. Four retained pill reminders
+interrupt the time display when due.
 
 See [Using the app](docs/using-the-app.md) for current controls, phone
 synchronisation, and troubleshooting.
@@ -22,7 +22,9 @@ minutes one through nine as `o' one` through `o' nine`, and omits minutes at
 
 ## Watch controls
 
-- Time display: Select opens the reminder list.
+- Time display: Down switches local/second timezone; Select opens the reminder
+  list. Each switch briefly shows its label; second-timezone colours remain
+  distinct.
 - Reminder list: Up/Down moves; Select edits; hold Select syncs the phone report;
   Back returns to time.
 - Reminder editor: Up/Down chooses a field; Select changes or saves; Back cancels.
@@ -35,20 +37,21 @@ Edit reminder times with the watch controls above or open Number Watch settings
 in the rePebble phone app. Phone page also controls:
 
 - four pill reminder times and enabled state
-- displayed time: watch-local time or a fixed UTC offset from UTC-12:00 through
-  UTC+14:00 in 15-minute steps
+- named second timezone, switch label, and separate text/background colours
 - time format follows the watch's 12/24-hour system setting
 - horizontal alignment: left, centre, right
 - vertical alignment: top, middle, bottom
 - font size: small, medium, large
-- independent text and background colours
+- local-time text and background colours
 
 Save sends complete configuration to watch atomically, then requests a fresh
 watch-to-phone report sync. Enabled reminders must remain at least two minutes
-apart. A fixed UTC offset does not adjust for daylight saving time and changes
-only the word-time display; reminder schedules remain in the watch's local
-time. Watch persists configuration and reschedules the next wakeup. Taken means
-self-reported. Report is not medical record.
+apart. Watch starts in phone-synchronised local time. Down toggles the second
+timezone. Phone resolves its daylight-saving rules on bridge connection,
+settings save, and report sync, then sends the current offset plus next
+transition. Watch stores that transition for offline use. Reminder schedules
+remain in watch-local time. Watch persists configuration and reschedules the
+next wakeup. Taken means self-reported. Report is not medical record.
 
 **Clear phone report** removes phone-local history. Later synchronisation ignores
 retained watch events scheduled before the clear, while accepting new events.

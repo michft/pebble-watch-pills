@@ -1,7 +1,7 @@
 {
   "name": "number-watch",
   "author": "mt",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "keywords": [
     "pebble-app"
   ],
@@ -42,6 +42,12 @@
       "BACKGROUND_COLOR",
       "USE_LOCAL_TIME",
       "UTC_OFFSET_MINUTES",
+      "ALT_TEXT_COLOR",
+      "ALT_BACKGROUND_COLOR",
+      "ALT_TZ_LABEL",
+      "ALT_UTC_OFFSET_MINUTES",
+      "ALT_TRANSITION_AT",
+      "ALT_TRANSITION_OFFSET_MINUTES",
       "SLOT_0_HOUR",
       "SLOT_0_MINUTE",
       "SLOT_0_ENABLED",

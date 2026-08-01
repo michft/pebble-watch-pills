@@ -2,6 +2,15 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.5] - 2026-08-01
+
+- Start in phone-synchronised local time and let Down toggle a configured named
+  second timezone.
+- Give the second timezone its own colours and briefly show the selected zone
+  label after each switch.
+- Refresh the named-zone offset and next daylight-saving transition from the
+  connected phone, with watch-side storage for offline transitions.
+
 ## [0.2.4] - 2026-07-31
 
 - Add a phone setting to display local time or a fixed UTC offset from UTC-12:00
