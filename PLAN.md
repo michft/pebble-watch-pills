@@ -1,23 +1,27 @@
 # Number Watch with Pill Reminders — Implemented Plan
 
-Status: implemented; current feature release is 0.2.4
+Status: implemented for release 0.2.5
 
 Target: Pebble Time 2 / rePebble `emery`
 
-Date: 2026-07-22
+Date: 2026-08-01
 
 ## Product
 
-Watchapp displays local time or a fixed UTC offset as named numbers. Existing
-four-slot pill reminder, outcome history, persistence, wakeups, and phone report
-remain intact.
+Watchapp starts in phone-synchronised local time. Down toggles a configured
+named second timezone. Existing four-slot pill reminder, outcome history,
+persistence, wakeups, and phone report remain intact.
 Reminder alert interrupts watchface. Pebble OS reserves buttons for true
 watchfaces, so prior button outcome flow cannot be used unchanged.
 
 ## Display rules
 
 - Follow watch 12/24-hour preference.
-- Allow local time or a fixed UTC offset for display; reminders stay local.
+- Default to local time on launch; Down toggles a named second timezone.
+- Briefly show `LOCAL` or configured zone label after switching.
+- Keep a distinct configurable colour pair for second-timezone mode.
+- Resolve named-zone offset and next daylight-saving transition on phone;
+  refresh on connection/save/sync and retain next transition on watch.
 - Update each minute.
 - Place every space-separated word on new line.
 - When phrase has at most three words, split long `-teen` words at syllable.
@@ -26,7 +30,7 @@ watchfaces, so prior button outcome flow cannot be used unchanged.
   - `12:27` → `twelve / twenty / seven`
   - `01:06` → `one / o' / six`
 - Phone config controls left/centre/right, top/middle/bottom, three font sizes,
-  text colour, and background colour.
+  local colours, named second timezone, switch label, and second-zone colours.
 
 ## Reminder rules
 
@@ -44,15 +48,18 @@ watchfaces, so prior button outcome flow cannot be used unchanged.
 ```text
 phone settings/report
   -> PebbleKit JS AppMessage
+  -> named-zone current offset + next DST transition
   -> validated display + four reminder slots
   -> persisted watch state + wakeup reschedule
 
+Down        -> local/second-zone toggle -> label -> word time
 minute tick -> time_words.c -> watchface TextLayer
 wakeup      -> reminder alert -> Up acknowledgement records Taken
 ```
 
-`time_words.c` remains Pebble-independent for host C tests. Reminder persistence
-format stays version 2; display config uses separate persistence key.
+`time_words.c` and `display_time.c` remain Pebble-independent for host C tests.
+Reminder persistence stays version 2; display config migrates to version 3 in
+its separate persistence key.
 
 ## Validation
 

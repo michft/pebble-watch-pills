@@ -1,3 +1,5 @@
+var timezone = require("./timezone");
+
 /**
  * Escapes HTML special characters in a value converted to a string.
  * @param {*} value - The value to escape.
@@ -154,23 +156,30 @@ function settingsSection(settings) {
     fontSize: 2,
     textColor: 0,
     backgroundColor: 1,
-    useLocalTime: true,
-    utcOffsetMinutes: 0,
   };
-  var useLocalTime = typeof display.useLocalTime === "boolean"
-    ? display.useLocalTime
-    : true;
-  var utcOffsetMinutes = Number.isInteger(display.utcOffsetMinutes)
-    && display.utcOffsetMinutes >= -12 * 60
-    && display.utcOffsetMinutes <= 14 * 60
-    && display.utcOffsetMinutes % 15 === 0
-    ? display.utcOffsetMinutes
-    : 0;
+  var alternate = settings && settings.alternate ? settings.alternate : {
+    timeZone: "UTC",
+    label: "UTC",
+    textColor: 1,
+    backgroundColor: 4,
+  };
+  var selectedTimeZone = typeof alternate.timeZone === "string"
+    ? alternate.timeZone
+    : "UTC";
+  var timeZones = timezone.supportedTimeZones();
+  if (timeZones.indexOf(selectedTimeZone) === -1) timeZones.unshift(selectedTimeZone);
   function options(values, selected) {
     return values.map(function (entry) {
       return "<option value=" + entry[0]
         + (entry[0] === selected ? " selected" : "") + ">"
         + escapeHtml(entry[1]) + "</option>";
+    }).join("");
+  }
+  function timeZoneOptions() {
+    return timeZones.map(function (zone) {
+      return "<option value='" + escapeHtml(zone) + "'"
+        + (zone === selectedTimeZone ? " selected" : "") + ">"
+        + escapeHtml(zone.replace(/_/g, " ")) + "</option>";
     }).join("");
   }
   var reminderRows = slots.map(function (slot, index) {
@@ -186,31 +195,30 @@ function settingsSection(settings) {
     [4, "Yellow"], [5, "Green"], [6, "Cyan"], [7, "Blue"],
     [8, "Purple"], [9, "Magenta"],
   ];
-  var utcOffsets = [];
-  for (var offset = -12 * 60; offset <= 14 * 60; offset += 15) {
-    var sign = offset < 0 ? "-" : "+";
-    var absolute = Math.abs(offset);
-    utcOffsets.push([
-      offset,
-      "UTC" + sign + pad2(Math.floor(absolute / 60)) + ":" + pad2(absolute % 60),
-    ]);
-  }
   return "<section class=card><h2>Watch settings</h2>"
     + "<p class=muted>Saved settings transfer to watch, then refresh this report.</p>"
     + "<p class=muted>Time format follows the watch's 12/24-hour system setting.</p>"
     + "<fieldset><legend>Reminders</legend>" + reminderRows + "</fieldset>"
-    + "<fieldset><legend>Displayed time</legend><label for=time-source>Time source</label>"
-    + "<select id=time-source onchange=updateTimeSource()>"
-    + options([["local", "Local time"], ["fixed", "Fixed UTC offset"]], useLocalTime ? "local" : "fixed")
-    + "</select><label for=utc-offset>UTC offset</label><select id=utc-offset>"
-    + options(utcOffsets, utcOffsetMinutes) + "</select>"
-    + "<p class=muted>Fixed offsets do not adjust for daylight saving. "
-    + "Reminder schedules remain on watch local time.</p></fieldset>"
+    + "<fieldset><legend>Second timezone</legend>"
+    + "<p class=muted>Down switches between phone-local time and this named timezone.</p>"
+    + "<label for=alternate-time-zone>Timezone</label>"
+    + "<select id=alternate-time-zone onchange=updateZoneLabel()>"
+    + timeZoneOptions() + "</select>"
+    + "<label for=alternate-label>Switch label</label>"
+    + "<input id=alternate-label type=text maxlength=8 pattern='[A-Za-z0-9 ]{1,8}' value='"
+    + escapeHtml(alternate.label || timezone.labelForTimeZone(selectedTimeZone)) + "'>"
+    + "<label for=alternate-text-color>Text colour</label><select id=alternate-text-color>"
+    + options(colors, Number.isInteger(alternate.textColor) ? alternate.textColor : 1) + "</select>"
+    + "<label for=alternate-background-color>Background colour</label>"
+    + "<select id=alternate-background-color>"
+    + options(colors, Number.isInteger(alternate.backgroundColor) ? alternate.backgroundColor : 4)
+    + "</select><p class=muted>Phone refreshes daylight-saving data whenever bridge connects. "
+    + "Watch stores next transition for offline use.</p></fieldset>"
     + "<fieldset><legend>Text position</legend><label for=horizontal>Horizontal</label>"
     + "<select id=horizontal>" + options([[0, "Left"], [1, "Center"], [2, "Right"]], display.horizontal) + "</select>"
     + "<label for=vertical>Vertical</label><select id=vertical>"
     + options([[0, "Top"], [1, "Middle"], [2, "Bottom"]], display.vertical) + "</select></fieldset>"
-    + "<fieldset><legend>Text appearance</legend><label for=font-size>Font size</label>"
+    + "<fieldset><legend>Local time appearance</legend><label for=font-size>Font size</label>"
     + "<select id=font-size>" + options([[0, "Small"], [1, "Medium"], [2, "Large"]], display.fontSize) + "</select>"
     + "<label for=text-color>Text colour</label><select id=text-color>"
     + options(colors, display.textColor) + "</select>"
@@ -261,7 +269,7 @@ exports.buildReportPage = function buildReportPage(state) {
     + "table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 4px;border-bottom:1px solid #e7ecf2}"
     + "summary{cursor:pointer}.empty{padding:15px;background:#fff;border-radius:12px}"
     + "fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:700;margin-bottom:8px}"
-    + "label{display:block;font-weight:600;margin:10px 0 5px}select,input[type=time]{box-sizing:border-box;width:100%;font-size:17px;padding:10px;border:1px solid #aab6c4;border-radius:8px;background:#fff}"
+    + "label{display:block;font-weight:600;margin:10px 0 5px}select,input[type=time],input[type=text]{box-sizing:border-box;width:100%;font-size:17px;padding:10px;border:1px solid #aab6c4;border-radius:8px;background:#fff}"
     + ".reminder{display:grid;grid-template-columns:1fr 1.2fr;gap:4px 12px;align-items:end;margin:10px 0}.reminder label{margin:0}.toggle{grid-column:2;font-weight:400}input[type=checkbox]{width:auto}"
     + "button{width:100%;padding:13px;margin:8px 0;border:0;border-radius:10px;font-size:17px;font-weight:600}"
     + ".save{background:#1e6b91;color:#fff}.danger{background:#b42318;color:#fff}.close{background:#dce8f4;color:#172033}"
@@ -278,10 +286,10 @@ exports.buildReportPage = function buildReportPage(state) {
     + "<button class=danger onclick=clearHistory()>Clear phone report</button>"
     + "<button class=close onclick=closeReport()>Close</button>"
     + "<script>function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
-    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}closeWith({action:'save_settings',display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:parseInt(document.getElementById('text-color').value,10),backgroundColor:parseInt(document.getElementById('background-color').value,10),useLocalTime:document.getElementById('time-source').value==='local',utcOffsetMinutes:parseInt(document.getElementById('utc-offset').value,10)},slots:slots})}"
+    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}var zoneLabel=document.getElementById('alternate-label').value.trim().toUpperCase();if(!/^[A-Z0-9 ]{1,8}$/.test(zoneLabel)){alert('Switch label needs 1-8 letters, numbers, or spaces.');return;}closeWith({action:'save_settings',display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:parseInt(document.getElementById('text-color').value,10),backgroundColor:parseInt(document.getElementById('background-color').value,10)},alternate:{timeZone:document.getElementById('alternate-time-zone').value,label:zoneLabel,textColor:parseInt(document.getElementById('alternate-text-color').value,10),backgroundColor:parseInt(document.getElementById('alternate-background-color').value,10)},slots:slots})}"
     + "function clearHistory(){if(confirm('Clear phone report history? This cannot be undone.'))closeWith({action:'clear_history'})}"
     + "function closeReport(){closeWith({action:'close'})}"
-    + "function updateTimeSource(){document.getElementById('utc-offset').disabled=document.getElementById('time-source').value==='local'}"
-    + "updateTimeSource()</script>"
+    + "function updateZoneLabel(){var p=document.getElementById('alternate-time-zone').value.split('/');document.getElementById('alternate-label').value=p[p.length-1].replace(/_/g,' ').toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,8)}"
+    + "</script>"
     + "</main></body></html>";
 };

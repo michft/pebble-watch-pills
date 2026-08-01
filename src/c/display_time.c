@@ -30,3 +30,17 @@ bool display_time_fixed_parts(
   *minute = parts->tm_min;
   return true;
 }
+
+bool display_time_named_parts(
+  time_t utc_time,
+  int16_t utc_offset_minutes,
+  time_t transition_at,
+  int16_t transition_offset_minutes,
+  int *hour,
+  int *minute
+) {
+  int16_t active_offset = transition_at > 0 && utc_time >= transition_at
+    ? transition_offset_minutes
+    : utc_offset_minutes;
+  return display_time_fixed_parts(utc_time, active_offset, hour, minute);
+}

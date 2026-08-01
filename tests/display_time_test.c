@@ -19,4 +19,13 @@ int main(void) {
   assert(minute == 0);
 
   assert(!display_time_fixed_parts(0, 7, &hour, &minute));
+
+  time_t transition = 1000;
+  assert(display_time_named_parts(999, 600, transition, 660, &hour, &minute));
+  assert(hour == 10);
+  assert(minute == 16);
+
+  assert(display_time_named_parts(1000, 600, transition, 660, &hour, &minute));
+  assert(hour == 11);
+  assert(minute == 16);
 }

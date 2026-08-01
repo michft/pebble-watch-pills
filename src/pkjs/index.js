@@ -1,4 +1,5 @@
 var reportPage = require("./report-page");
+var timezone = require("./timezone");
 
 var STORAGE_KEY = "pebble-pills-phone-state-v1";
 var NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
@@ -9,7 +10,48 @@ var MessageType = {
   SYNC_DONE: 6,
   REQUEST_SYNC: 7,
   SETTINGS_UPDATE: 8,
+  TIMEZONE_UPDATE: 9,
 };
+
+var zoneRefreshTimer = null;
+var MAX_ZONE_REFRESH_DELAY_MS = 20 * 24 * 60 * 60 * 1000;
+
+function defaultAlternateSettings() {
+  return {
+    timeZone: "UTC",
+    label: "UTC",
+    textColor: 1,
+    backgroundColor: 4,
+  };
+}
+
+function normaliseAlternateSettings(value) {
+  var fallback = defaultAlternateSettings();
+  var candidate = value || {};
+  return {
+    timeZone: typeof candidate.timeZone === "string"
+      ? candidate.timeZone
+      : fallback.timeZone,
+    label: typeof candidate.label === "string"
+      ? candidate.label
+      : fallback.label,
+    textColor: Number.isInteger(candidate.textColor)
+      ? candidate.textColor
+      : fallback.textColor,
+    backgroundColor: Number.isInteger(candidate.backgroundColor)
+      ? candidate.backgroundColor
+      : fallback.backgroundColor,
+    offsetMinutes: Number.isInteger(candidate.offsetMinutes)
+      ? candidate.offsetMinutes
+      : 0,
+    transitionAt: Number.isInteger(candidate.transitionAt)
+      ? candidate.transitionAt
+      : 0,
+    transitionOffsetMinutes: Number.isInteger(candidate.transitionOffsetMinutes)
+      ? candidate.transitionOffsetMinutes
+      : 0,
+  };
+}
 
 /**
  * Creates an empty phone-side synchronisation state.
@@ -110,9 +152,14 @@ function settingsResponseValid(response) {
     || !integerInRange(response.display.fontSize, 0, 2)
     || !integerInRange(response.display.textColor, 0, 9)
     || !integerInRange(response.display.backgroundColor, 0, 9)
-    || typeof response.display.useLocalTime !== "boolean"
-    || !integerInRange(response.display.utcOffsetMinutes, -12 * 60, 14 * 60)
-    || response.display.utcOffsetMinutes % 15 !== 0
+    || !response.alternate
+    || typeof response.alternate.timeZone !== "string"
+    || response.alternate.timeZone.length < 1
+    || response.alternate.timeZone.length > 64
+    || typeof response.alternate.label !== "string"
+    || !/^[A-Z0-9 ]{1,8}$/.test(response.alternate.label)
+    || !integerInRange(response.alternate.textColor, 0, 9)
+    || !integerInRange(response.alternate.backgroundColor, 0, 9)
   ) {
     return false;
   }
@@ -141,21 +188,96 @@ function settingsResponseValid(response) {
   return true;
 }
 
+function timezoneMessage(alternate, type) {
+  var snapshot = timezone.timezoneSnapshot(alternate.timeZone, Date.now());
+  if (
+    !snapshot
+    || !integerInRange(snapshot.offsetMinutes, -12 * 60, 14 * 60)
+    || snapshot.offsetMinutes % 15 !== 0
+    || !integerInRange(snapshot.transitionOffsetMinutes, -12 * 60, 14 * 60)
+    || snapshot.transitionOffsetMinutes % 15 !== 0
+  ) {
+    return null;
+  }
+  return {
+    TYPE: type,
+    ALT_TEXT_COLOR: alternate.textColor,
+    ALT_BACKGROUND_COLOR: alternate.backgroundColor,
+    ALT_TZ_LABEL: alternate.label,
+    ALT_UTC_OFFSET_MINUTES: snapshot.offsetMinutes,
+    ALT_TRANSITION_AT: snapshot.transitionAt,
+    ALT_TRANSITION_OFFSET_MINUTES: snapshot.transitionOffsetMinutes,
+  };
+}
+
+function scheduleTimezoneRefresh(snapshot) {
+  if (zoneRefreshTimer && typeof clearTimeout === "function") {
+    clearTimeout(zoneRefreshTimer);
+  }
+  var transitionDelay = snapshot.transitionAt > 0
+    ? snapshot.transitionAt * 1000 - Date.now() + 60 * 1000
+    : MAX_ZONE_REFRESH_DELAY_MS;
+  var delay = Math.max(60 * 1000, Math.min(transitionDelay, MAX_ZONE_REFRESH_DELAY_MS));
+  zoneRefreshTimer = setTimeout(function () {
+    pushTimezoneUpdate(loadState().settings);
+  }, delay);
+  if (zoneRefreshTimer && typeof zoneRefreshTimer.unref === "function") {
+    zoneRefreshTimer.unref();
+  }
+}
+
+function scheduleTimezoneRetry() {
+  if (zoneRefreshTimer && typeof clearTimeout === "function") {
+    clearTimeout(zoneRefreshTimer);
+  }
+  zoneRefreshTimer = setTimeout(function () {
+    pushTimezoneUpdate(loadState().settings);
+  }, 60 * 1000);
+  if (zoneRefreshTimer && typeof zoneRefreshTimer.unref === "function") {
+    zoneRefreshTimer.unref();
+  }
+}
+
+function pushTimezoneUpdate(settings, complete) {
+  var alternate = normaliseAlternateSettings(settings && settings.alternate);
+  var message = timezoneMessage(alternate, MessageType.TIMEZONE_UPDATE);
+  if (!message) {
+    console.log("Named timezone unavailable on phone");
+    scheduleTimezoneRetry();
+    if (complete) complete();
+    return;
+  }
+  Pebble.sendAppMessage(
+    message,
+    function () {
+      scheduleTimezoneRefresh({ transitionAt: message.ALT_TRANSITION_AT });
+      if (complete) complete();
+    },
+    function () {
+      console.log("Phone timezone update failed");
+      scheduleTimezoneRetry();
+      if (complete) complete();
+    }
+  );
+}
+
 function sendSettings(response) {
   if (!settingsResponseValid(response)) {
     console.log("Phone settings invalid");
     return;
   }
-  var message = {
-    TYPE: MessageType.SETTINGS_UPDATE,
-    H_ALIGN: response.display.horizontal,
-    V_ALIGN: response.display.vertical,
-    FONT_SIZE: response.display.fontSize,
-    TEXT_COLOR: response.display.textColor,
-    BACKGROUND_COLOR: response.display.backgroundColor,
-    USE_LOCAL_TIME: response.display.useLocalTime ? 1 : 0,
-    UTC_OFFSET_MINUTES: response.display.utcOffsetMinutes,
-  };
+  var message = timezoneMessage(response.alternate, MessageType.SETTINGS_UPDATE);
+  if (!message) {
+    console.log("Named timezone unavailable on phone");
+    return;
+  }
+  message.H_ALIGN = response.display.horizontal;
+  message.V_ALIGN = response.display.vertical;
+  message.FONT_SIZE = response.display.fontSize;
+  message.TEXT_COLOR = response.display.textColor;
+  message.BACKGROUND_COLOR = response.display.backgroundColor;
+  message.USE_LOCAL_TIME = 1;
+  message.UTC_OFFSET_MINUTES = 0;
   response.slots.forEach(function (slot, index) {
     message["SLOT_" + index + "_HOUR"] = slot.hour;
     message["SLOT_" + index + "_MINUTE"] = slot.minute;
@@ -164,6 +286,7 @@ function sendSettings(response) {
   Pebble.sendAppMessage(
     message,
     function () {
+      scheduleTimezoneRefresh({ transitionAt: message.ALT_TRANSITION_AT });
       requestSync();
     },
     function () { console.log("Phone settings send failed"); }
@@ -265,12 +388,21 @@ function handleSettings(payload) {
     return;
   }
   var state = loadState();
+  var priorAlternate = normaliseAlternateSettings(
+    state.settings && state.settings.alternate
+  );
+  var watchAlternate = payload.alternate
+    ? normaliseAlternateSettings(payload.alternate)
+    : priorAlternate;
+  watchAlternate.timeZone = priorAlternate.timeZone;
   state.settings = payload;
+  state.settings.alternate = watchAlternate;
   state.droppedEvents = Math.max(
     state.droppedEvents,
     Number(payload.droppedEvents) || 0
   );
   saveState(state);
+  pushTimezoneUpdate(state.settings);
 }
 
 /**
@@ -287,7 +419,7 @@ function handleSyncDone(payload) {
 
 Pebble.addEventListener("ready", function () {
   console.log("Number Watch phone bridge ready");
-  requestSync();
+  pushTimezoneUpdate(loadState().settings, requestSync);
 });
 
 Pebble.addEventListener("appmessage", function (event) {
@@ -339,6 +471,7 @@ Pebble.addEventListener("webviewclosed", function (event) {
         droppedEvents: prior.droppedEvents || 0,
         hour12: Boolean(prior.hour12),
         display: response.display,
+        alternate: response.alternate,
         slots: response.slots,
       };
       saveState(settingsState);

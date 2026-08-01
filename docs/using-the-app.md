@@ -9,16 +9,25 @@
 5. Press Select to change the selected value or save.
 6. Press Back to cancel or return to the word-time display.
 
-## Choose the displayed UTC offset
+## Switch to a second timezone
 
 1. Open Number Watch settings in the rePebble phone app.
-2. Under **Displayed time**, choose **Fixed UTC offset**.
-3. Choose an offset from UTC-12:00 through UTC+14:00 and save.
+2. Under **Second timezone**, choose a named timezone such as
+   **Europe/London**.
+3. Choose its switch label and text/background colours, then save.
+4. On the normal word-time display, press lower-right **Down** to switch.
+5. Press Down again to return to local time.
 
-Choose **Local time** to use the watch's time zone again. Fixed offsets do not
-adjust for daylight saving time. This setting changes only the word-time
-display; reminder schedules remain in the watch's local time. The display
-continues to follow the watch's 12/24-hour system preference.
+Number Watch starts in local time whenever the watchapp launches. Local time
+uses the watch timezone synchronised by the connected phone. A switch briefly
+shows the configured label or **LOCAL**; the selected timezone's colour pair
+remains visible afterward.
+
+The phone resolves daylight-saving rules and sends the current offset plus the
+next transition when its bridge connects, settings are saved, or a report sync
+occurs. The watch stores that transition, so one upcoming daylight-saving
+change works while disconnected. Later phone contact refreshes the next one.
+This changes only the word-time display; reminders remain in watch-local time.
 
 ## Acknowledge a reminder
 

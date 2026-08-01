@@ -20,3 +20,18 @@ bool display_time_fixed_parts(
   int *hour,
   int *minute
 );
+
+/**
+ * Converts UTC using phone-resolved named-zone offsets and next transition.
+ *
+ * The phone supplies the current offset plus the next daylight-saving
+ * transition so the watch remains correct while disconnected.
+ */
+bool display_time_named_parts(
+  time_t utc_time,
+  int16_t utc_offset_minutes,
+  time_t transition_at,
+  int16_t transition_offset_minutes,
+  int *hour,
+  int *minute
+);
