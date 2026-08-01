@@ -7,8 +7,8 @@ interrupt the time display when due.
 See [Using the app](docs/using-the-app.md) for current controls, phone
 synchronisation, and troubleshooting.
 
-Time uses one word per line. Phrases containing at most three words split long
-teen words at spoken syllable boundary:
+Time uses one word per line. At Large font size, `seventeen` exceeds the
+available line width and splits at its spoken syllable boundary:
 
 ```text
 eight       twelve

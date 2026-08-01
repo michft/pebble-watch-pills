@@ -19,13 +19,14 @@ bool time_words_format(
 
 /**
  * Formats time words for watch display, placing every word on its own line.
- * When the phrase has at most three words, long teen words are split at their
- * spoken syllable boundary (for example, "seventeen" -> "seven\n-teen").
+ * For the large watchface font, "seventeen" is split at its spoken syllable
+ * boundary because it exceeds the available line width.
  */
 bool time_words_format_lines(
   int hour,
   int minute,
   bool use_24_hour,
+  bool use_large_font,
   char *buffer,
   size_t buffer_size
 );

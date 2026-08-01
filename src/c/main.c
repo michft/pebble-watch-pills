@@ -579,6 +579,7 @@ static void update_watchface(void) {
     hour,
     minute,
     clock_is_24h_style(),
+    s_display_settings.font_size == FONT_LARGE,
     s_watchface_text,
     sizeof(s_watchface_text)
   )) {

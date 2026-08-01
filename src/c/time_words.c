@@ -119,32 +119,15 @@ bool time_words_format(
   return true;
 }
 
-static const char *split_teen_word(const char *word) {
-  static const struct {
-    const char *word;
-    const char *split;
-  } splits[] = {
-    {"thirteen", "thir\n-teen"},
-    {"fourteen", "four\n-teen"},
-    {"fifteen", "fif\n-teen"},
-    {"sixteen", "six\n-teen"},
-    {"seventeen", "seven\n-teen"},
-    {"eighteen", "eight\n-teen"},
-    {"nineteen", "nine\n-teen"},
-  };
-
-  for (size_t index = 0; index < sizeof(splits) / sizeof(splits[0]); index++) {
-    if (strcmp(word, splits[index].word) == 0) {
-      return splits[index].split;
-    }
-  }
-  return word;
+static const char *split_large_font_word(const char *word) {
+  return strcmp(word, "seventeen") == 0 ? "seven\n-teen" : word;
 }
 
 bool time_words_format_lines(
   int hour,
   int minute,
   bool use_24_hour,
+  bool use_large_font,
   char *buffer,
   size_t buffer_size
 ) {
@@ -166,7 +149,9 @@ bool time_words_format_lines(
   while (*cursor) {
     char *space = strchr(cursor, ' ');
     if (space) *space = '\0';
-    const char *word = word_count <= 3 ? split_teen_word(cursor) : cursor;
+    const char *word = use_large_font && word_count <= 3
+      ? split_large_font_word(cursor)
+      : cursor;
     int written = snprintf(
       buffer + used,
       buffer_size - used,
