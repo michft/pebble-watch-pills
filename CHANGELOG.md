@@ -2,6 +2,11 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.6] - 2026-08-01
+
+- Split only `seventeen` at Large font size, leaving fitting teen words whole
+  and avoiding syllable splits at Small and Medium sizes.
+
 ## [0.2.5] - 2026-08-01
 
 - Start in phone-synchronised local time and let Down toggle a configured named
