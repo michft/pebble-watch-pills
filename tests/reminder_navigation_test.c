@@ -3,20 +3,6 @@
 #include <assert.h>
 #include <stdbool.h>
 
-static void expect_time_display_opens_reminders(void) {
-  const bool enabled[REMINDER_NAVIGATION_SLOT_COUNT] = {
-    true, false, true, false
-  };
-  ReminderNavigation state = {
-    .screen = REMINDER_NAVIGATION_TIME,
-    .main_selection = 0,
-  };
-
-  reminder_navigation_select(&state, enabled);
-
-  assert(state.screen == REMINDER_NAVIGATION_MAIN);
-}
-
 static void expect_existing_reminder_opens_enabled_field(void) {
   const bool enabled[REMINDER_NAVIGATION_SLOT_COUNT] = {
     true, false, true, false
@@ -26,7 +12,7 @@ static void expect_existing_reminder_opens_enabled_field(void) {
     .main_selection = 1,
   };
 
-  reminder_navigation_select(&state, enabled);
+  reminder_navigation_open(&state, enabled);
 
   assert(state.screen == REMINDER_NAVIGATION_EDIT);
   assert(state.selected_slot == 2);
@@ -43,7 +29,7 @@ static void expect_add_opens_first_disabled_reminder_time(void) {
     .main_selection = 2,
   };
 
-  reminder_navigation_select(&state, enabled);
+  reminder_navigation_open(&state, enabled);
 
   assert(state.screen == REMINDER_NAVIGATION_EDIT);
   assert(state.selected_slot == 1);
@@ -57,21 +43,12 @@ static void expect_only_up_acknowledges_alert(void) {
     == REMINDER_ALERT_ACTION_TAKEN
   );
   assert(
-    reminder_navigation_alert_action(REMINDER_ALERT_BUTTON_SELECT)
-    == REMINDER_ALERT_ACTION_NONE
-  );
-  assert(
     reminder_navigation_alert_action(REMINDER_ALERT_BUTTON_DOWN)
-    == REMINDER_ALERT_ACTION_NONE
-  );
-  assert(
-    reminder_navigation_alert_action(REMINDER_ALERT_BUTTON_BACK)
     == REMINDER_ALERT_ACTION_DISMISS
   );
 }
 
 int main(void) {
-  expect_time_display_opens_reminders();
   expect_existing_reminder_opens_enabled_field();
   expect_add_opens_first_disabled_reminder_time();
   expect_only_up_acknowledges_alert();

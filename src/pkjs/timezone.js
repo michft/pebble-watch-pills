@@ -48,6 +48,48 @@ function partNumber(parts, type) {
   return NaN;
 }
 
+function zonedParts(timeZone, timestampMs) {
+  if (typeof Intl === "undefined" || !Intl.DateTimeFormat) return null;
+  try {
+    var parts = formatterFor(timeZone).formatToParts(new Date(timestampMs));
+    return {
+      year: partNumber(parts, "year"),
+      month: partNumber(parts, "month"),
+      day: partNumber(parts, "day"),
+      hour: partNumber(parts, "hour"),
+      minute: partNumber(parts, "minute"),
+      second: partNumber(parts, "second"),
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function pad2(value) {
+  return value < 10 ? "0" + value : String(value);
+}
+
+function dateKeyAt(timeZone, timestampMs) {
+  var parts = zonedParts(timeZone, timestampMs);
+  if (!parts) return null;
+  return parts.year + "-" + pad2(parts.month) + "-" + pad2(parts.day);
+}
+
+function timeLabelAt(timeZone, timestampMs) {
+  var parts = zonedParts(timeZone, timestampMs);
+  if (!parts) return null;
+  return pad2(parts.hour) + ":" + pad2(parts.minute);
+}
+
+function systemTimeZone() {
+  if (typeof Intl === "undefined" || !Intl.DateTimeFormat) return "UTC";
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch (error) {
+    return "UTC";
+  }
+}
+
 function offsetMinutesAt(timeZone, timestampMs) {
   if (typeof Intl === "undefined" || !Intl.DateTimeFormat) return null;
   try {
@@ -127,6 +169,10 @@ function supportedTimeZones() {
 }
 
 exports.labelForTimeZone = labelForTimeZone;
+exports.dateKeyAt = dateKeyAt;
 exports.offsetMinutesAt = offsetMinutesAt;
 exports.supportedTimeZones = supportedTimeZones;
+exports.systemTimeZone = systemTimeZone;
+exports.timeLabelAt = timeLabelAt;
 exports.timezoneSnapshot = timezoneSnapshot;
+exports.zonedParts = zonedParts;

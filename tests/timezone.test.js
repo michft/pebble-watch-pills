@@ -1,9 +1,11 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
+  dateKeyAt,
   labelForTimeZone,
   offsetMinutesAt,
   supportedTimeZones,
+  timeLabelAt,
   timezoneSnapshot,
 } = require("../src/pkjs/timezone.js");
 
@@ -29,4 +31,13 @@ test("provides compact labels and selectable timezone names", () => {
   assert.equal(labelForTimeZone("Europe/London"), "LONDON");
   assert.equal(labelForTimeZone("America/Los_Angeles"), "LOS ANGE");
   assert.ok(supportedTimeZones().includes("Australia/Sydney"));
+});
+
+test("renders one instant in travel and home zones without assuming 24-hour days", () => {
+  const instant = Date.UTC(2026, 7, 2, 14, 0);
+
+  assert.equal(timeLabelAt("Europe/Madrid", instant), "16:00");
+  assert.equal(dateKeyAt("Europe/Madrid", instant), "2026-08-02");
+  assert.equal(timeLabelAt("Australia/Sydney", instant), "00:00");
+  assert.equal(dateKeyAt("Australia/Sydney", instant), "2026-08-03");
 });

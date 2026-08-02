@@ -19,6 +19,34 @@ extern uint32_t MESSAGE_KEY_ALT_TZ_LABEL;
 extern uint32_t MESSAGE_KEY_ALT_UTC_OFFSET_MINUTES;
 extern uint32_t MESSAGE_KEY_ALT_TRANSITION_AT;
 extern uint32_t MESSAGE_KEY_ALT_TRANSITION_OFFSET_MINUTES;
+extern uint32_t MESSAGE_KEY_TZ_0_ENABLED;
+extern uint32_t MESSAGE_KEY_TZ_0_LABEL;
+extern uint32_t MESSAGE_KEY_TZ_0_TEXT_COLOR;
+extern uint32_t MESSAGE_KEY_TZ_0_BACKGROUND_COLOR;
+extern uint32_t MESSAGE_KEY_TZ_0_UTC_OFFSET_MINUTES;
+extern uint32_t MESSAGE_KEY_TZ_0_TRANSITION_AT;
+extern uint32_t MESSAGE_KEY_TZ_0_TRANSITION_OFFSET_MINUTES;
+extern uint32_t MESSAGE_KEY_TZ_1_ENABLED;
+extern uint32_t MESSAGE_KEY_TZ_1_LABEL;
+extern uint32_t MESSAGE_KEY_TZ_1_TEXT_COLOR;
+extern uint32_t MESSAGE_KEY_TZ_1_BACKGROUND_COLOR;
+extern uint32_t MESSAGE_KEY_TZ_1_UTC_OFFSET_MINUTES;
+extern uint32_t MESSAGE_KEY_TZ_1_TRANSITION_AT;
+extern uint32_t MESSAGE_KEY_TZ_1_TRANSITION_OFFSET_MINUTES;
+extern uint32_t MESSAGE_KEY_TZ_2_ENABLED;
+extern uint32_t MESSAGE_KEY_TZ_2_LABEL;
+extern uint32_t MESSAGE_KEY_TZ_2_TEXT_COLOR;
+extern uint32_t MESSAGE_KEY_TZ_2_BACKGROUND_COLOR;
+extern uint32_t MESSAGE_KEY_TZ_2_UTC_OFFSET_MINUTES;
+extern uint32_t MESSAGE_KEY_TZ_2_TRANSITION_AT;
+extern uint32_t MESSAGE_KEY_TZ_2_TRANSITION_OFFSET_MINUTES;
+extern uint32_t MESSAGE_KEY_TZ_3_ENABLED;
+extern uint32_t MESSAGE_KEY_TZ_3_LABEL;
+extern uint32_t MESSAGE_KEY_TZ_3_TEXT_COLOR;
+extern uint32_t MESSAGE_KEY_TZ_3_BACKGROUND_COLOR;
+extern uint32_t MESSAGE_KEY_TZ_3_UTC_OFFSET_MINUTES;
+extern uint32_t MESSAGE_KEY_TZ_3_TRANSITION_AT;
+extern uint32_t MESSAGE_KEY_TZ_3_TRANSITION_OFFSET_MINUTES;
 extern uint32_t MESSAGE_KEY_SLOT_0_HOUR;
 extern uint32_t MESSAGE_KEY_SLOT_0_MINUTE;
 extern uint32_t MESSAGE_KEY_SLOT_0_ENABLED;
@@ -33,6 +61,7 @@ extern uint32_t MESSAGE_KEY_SLOT_3_MINUTE;
 extern uint32_t MESSAGE_KEY_SLOT_3_ENABLED;
 
 #define SLOT_COUNT 4
+#define TIMEZONE_COUNT 4
 #define MAIN_VISIBLE_ROWS 3
 #define MAIN_ADD_ITEM SLOT_COUNT
 #define EVENT_LIMIT 128
@@ -42,7 +71,8 @@ extern uint32_t MESSAGE_KEY_SLOT_3_ENABLED;
 #define PERSIST_KEY_DISPLAY_SETTINGS 100
 #define DISPLAY_SETTINGS_V1_VERSION 1
 #define DISPLAY_SETTINGS_V2_VERSION 2
-#define DISPLAY_SETTINGS_VERSION 3
+#define DISPLAY_SETTINGS_V3_VERSION 3
+#define DISPLAY_SETTINGS_VERSION 4
 #define WATCHFACE_DESCENDER_PADDING 6
 #define TIMEZONE_LABEL_LENGTH 8
 #define TIMEZONE_FEEDBACK_MS 1200
@@ -56,7 +86,9 @@ _Static_assert(
 
 typedef enum {
   SCREEN_WATCHFACE,
+  SCREEN_HOME,
   SCREEN_MAIN,
+  SCREEN_TIMEZONES,
   SCREEN_EDIT,
   SCREEN_ALERT,
   SCREEN_SYNC
@@ -119,6 +151,27 @@ typedef struct {
   int32_t alternate_transition_at;
   int16_t alternate_transition_offset_minutes;
   char alternate_label[TIMEZONE_LABEL_LENGTH + 1];
+} DisplaySettingsV3;
+
+typedef struct {
+  uint8_t enabled;
+  uint8_t use_watch_local;
+  uint8_t text_color;
+  uint8_t background_color;
+  int16_t utc_offset_minutes;
+  int32_t transition_at;
+  int16_t transition_offset_minutes;
+  char label[TIMEZONE_LABEL_LENGTH + 1];
+} TimezoneSettings;
+
+typedef struct {
+  uint16_t version;
+  uint8_t horizontal_alignment;
+  uint8_t vertical_alignment;
+  uint8_t font_size;
+  uint8_t text_color;
+  uint8_t background_color;
+  TimezoneSettings zones[TIMEZONE_COUNT];
 } DisplaySettings;
 
 typedef struct {
@@ -177,12 +230,15 @@ static uint8_t s_edit_field;
 static ReminderSlot s_edit_slot;
 static uint8_t s_main_selection;
 static uint8_t s_main_scroll_offset;
+static uint8_t s_home_selection;
+static uint8_t s_timezone_selection;
+static uint8_t s_timezone_scroll_offset;
 static uint32_t s_active_event_sequence;
 static AppTimer *s_alert_timer;
 static AppTimer *s_timezone_feedback_timer;
 static time_t s_alert_ends_at;
-static bool s_select_long;
-static bool s_show_alternate_time;
+static bool s_edit_value_mode;
+static uint8_t s_active_timezone;
 static bool s_syncing;
 static bool s_sync_show_status;
 static bool s_schedule_error;
@@ -360,23 +416,35 @@ static bool timezone_label_valid(const char label[TIMEZONE_LABEL_LENGTH + 1]) {
   return true;
 }
 
-static bool display_settings_valid(const DisplaySettings *settings) {
-  return settings->version == DISPLAY_SETTINGS_VERSION
-    && settings->horizontal_alignment <= HORIZONTAL_RIGHT
-    && settings->vertical_alignment <= VERTICAL_BOTTOM
-    && settings->font_size <= FONT_LARGE
+static bool timezone_settings_valid(const TimezoneSettings *settings) {
+  return settings->enabled <= 1
+    && settings->use_watch_local <= 1
     && settings->text_color <= 9
     && settings->background_color <= 9
-    && settings->alternate_text_color <= 9
-    && settings->alternate_background_color <= 9
-    && settings->alternate_utc_offset_minutes >= DISPLAY_TIME_MIN_OFFSET_MINUTES
-    && settings->alternate_utc_offset_minutes <= DISPLAY_TIME_MAX_OFFSET_MINUTES
-    && settings->alternate_utc_offset_minutes % DISPLAY_TIME_OFFSET_STEP_MINUTES == 0
-    && settings->alternate_transition_at >= 0
-    && settings->alternate_transition_offset_minutes >= DISPLAY_TIME_MIN_OFFSET_MINUTES
-    && settings->alternate_transition_offset_minutes <= DISPLAY_TIME_MAX_OFFSET_MINUTES
-    && settings->alternate_transition_offset_minutes % DISPLAY_TIME_OFFSET_STEP_MINUTES == 0
-    && timezone_label_valid(settings->alternate_label);
+    && settings->utc_offset_minutes >= DISPLAY_TIME_MIN_OFFSET_MINUTES
+    && settings->utc_offset_minutes <= DISPLAY_TIME_MAX_OFFSET_MINUTES
+    && settings->utc_offset_minutes % DISPLAY_TIME_OFFSET_STEP_MINUTES == 0
+    && settings->transition_at >= 0
+    && settings->transition_offset_minutes >= DISPLAY_TIME_MIN_OFFSET_MINUTES
+    && settings->transition_offset_minutes <= DISPLAY_TIME_MAX_OFFSET_MINUTES
+    && settings->transition_offset_minutes % DISPLAY_TIME_OFFSET_STEP_MINUTES == 0
+    && timezone_label_valid(settings->label);
+}
+
+static bool display_settings_valid(const DisplaySettings *settings) {
+  if (
+    settings->version != DISPLAY_SETTINGS_VERSION
+    || settings->horizontal_alignment > HORIZONTAL_RIGHT
+    || settings->vertical_alignment > VERTICAL_BOTTOM
+    || settings->font_size > FONT_LARGE
+    || settings->text_color > 9
+    || settings->background_color > 9
+    || !settings->zones[0].enabled
+  ) return false;
+  for (uint8_t index = 0; index < TIMEZONE_COUNT; index++) {
+    if (!timezone_settings_valid(&settings->zones[index])) return false;
+  }
+  return true;
 }
 
 static bool display_settings_v1_valid(const DisplaySettingsV1 *settings) {
@@ -416,13 +484,43 @@ static DisplaySettings migrated_display_settings(
     .font_size = font_size,
     .text_color = text_color,
     .background_color = background_color,
-    .alternate_text_color = 1,
-    .alternate_background_color = 4,
-    .alternate_utc_offset_minutes = alternate_offset,
-    .alternate_transition_at = 0,
-    .alternate_transition_offset_minutes = alternate_offset,
   };
-  snprintf(settings.alternate_label, sizeof(settings.alternate_label), "UTC");
+  for (uint8_t index = 0; index < TIMEZONE_COUNT; index++) {
+    settings.zones[index].enabled = index < 2;
+    settings.zones[index].text_color = index == 0 ? text_color : 1;
+    settings.zones[index].background_color = index == 0 ? background_color : 4;
+    settings.zones[index].utc_offset_minutes = index == 1 ? alternate_offset : 0;
+    settings.zones[index].transition_offset_minutes = settings.zones[index].utc_offset_minutes;
+    snprintf(
+      settings.zones[index].label,
+      sizeof(settings.zones[index].label),
+      "%s",
+      index == 0 ? "HOME" : "UTC"
+    );
+  }
+  settings.zones[0].use_watch_local = 1;
+  return settings;
+}
+
+static DisplaySettings migrated_display_settings_v3(const DisplaySettingsV3 *old) {
+  DisplaySettings settings = migrated_display_settings(
+    old->horizontal_alignment,
+    old->vertical_alignment,
+    old->font_size,
+    old->text_color,
+    old->background_color,
+    old->alternate_utc_offset_minutes
+  );
+  settings.zones[1].text_color = old->alternate_text_color;
+  settings.zones[1].background_color = old->alternate_background_color;
+  settings.zones[1].transition_at = old->alternate_transition_at;
+  settings.zones[1].transition_offset_minutes = old->alternate_transition_offset_minutes;
+  snprintf(
+    settings.zones[1].label,
+    sizeof(settings.zones[1].label),
+    "%s",
+    old->alternate_label
+  );
   return settings;
 }
 
@@ -447,6 +545,35 @@ static void load_display_settings(void) {
     ) == (int)sizeof(s_display_settings)
     && display_settings_valid(&s_display_settings);
   if (restored) return;
+
+  DisplaySettingsV3 version_3;
+  bool migrated_v3 = stored_size == (int)sizeof(version_3)
+    && persist_read_data(
+      PERSIST_KEY_DISPLAY_SETTINGS,
+      &version_3,
+      sizeof(version_3)
+    ) == (int)sizeof(version_3)
+    && version_3.version == DISPLAY_SETTINGS_V3_VERSION
+    && version_3.horizontal_alignment <= HORIZONTAL_RIGHT
+    && version_3.vertical_alignment <= VERTICAL_BOTTOM
+    && version_3.font_size <= FONT_LARGE
+    && version_3.text_color <= 9
+    && version_3.background_color <= 9
+    && version_3.alternate_text_color <= 9
+    && version_3.alternate_background_color <= 9
+    && version_3.alternate_utc_offset_minutes >= DISPLAY_TIME_MIN_OFFSET_MINUTES
+    && version_3.alternate_utc_offset_minutes <= DISPLAY_TIME_MAX_OFFSET_MINUTES
+    && version_3.alternate_utc_offset_minutes % DISPLAY_TIME_OFFSET_STEP_MINUTES == 0
+    && version_3.alternate_transition_at >= 0
+    && version_3.alternate_transition_offset_minutes >= DISPLAY_TIME_MIN_OFFSET_MINUTES
+    && version_3.alternate_transition_offset_minutes <= DISPLAY_TIME_MAX_OFFSET_MINUTES
+    && version_3.alternate_transition_offset_minutes % DISPLAY_TIME_OFFSET_STEP_MINUTES == 0
+    && timezone_label_valid(version_3.alternate_label);
+  if (migrated_v3) {
+    s_display_settings = migrated_display_settings_v3(&version_3);
+    save_display_settings();
+    return;
+  }
 
   DisplaySettingsV2 version_2;
   bool migrated_v2 = stored_size == (int)sizeof(version_2)
@@ -549,24 +676,32 @@ static void show_reminder_layers(void) {
   window_set_background_color(s_window, GColorWhite);
 }
 
+static TimezoneSettings *active_timezone_settings(void) {
+  if (
+    s_active_timezone >= TIMEZONE_COUNT
+    || !s_display_settings.zones[s_active_timezone].enabled
+  ) s_active_timezone = 0;
+  return &s_display_settings.zones[s_active_timezone];
+}
+
 static bool current_display_time(int *hour, int *minute) {
   time_t now = time(NULL);
-  if (s_show_alternate_time) {
-    return display_time_named_parts(
-      now,
-      s_display_settings.alternate_utc_offset_minutes,
-      (time_t)s_display_settings.alternate_transition_at,
-      s_display_settings.alternate_transition_offset_minutes,
-      hour,
-      minute
-    );
+  TimezoneSettings *zone = active_timezone_settings();
+  if (zone->use_watch_local) {
+    struct tm *local = localtime(&now);
+    if (local == NULL) return false;
+    *hour = local->tm_hour;
+    *minute = local->tm_min;
+    return true;
   }
-
-  struct tm *local = localtime(&now);
-  if (local == NULL) return false;
-  *hour = local->tm_hour;
-  *minute = local->tm_min;
-  return true;
+  return display_time_named_parts(
+    now,
+    zone->utc_offset_minutes,
+    (time_t)zone->transition_at,
+    zone->transition_offset_minutes,
+    hour,
+    minute
+  );
 }
 
 static void update_watchface(void) {
@@ -591,14 +726,8 @@ static void update_watchface(void) {
   GFont font = watchface_font();
   text_layer_set_font(s_watchface, font);
   text_layer_set_text_alignment(s_watchface, watchface_alignment());
-  text_layer_set_text_color(
-    s_watchface,
-    color_for_id(
-      s_show_alternate_time
-        ? s_display_settings.alternate_text_color
-        : s_display_settings.text_color
-    )
-  );
+  TimezoneSettings *zone = active_timezone_settings();
+  text_layer_set_text_color(s_watchface, color_for_id(zone->text_color));
   text_layer_set_text(s_watchface, s_watchface_text);
   layer_set_frame(
     text_layer_get_layer(s_watchface),
@@ -619,14 +748,7 @@ static void update_watchface(void) {
     text_layer_get_layer(s_watchface),
     GRect(6, y, bounds.size.w - 12, height)
   );
-  window_set_background_color(
-    s_window,
-    color_for_id(
-      s_show_alternate_time
-        ? s_display_settings.alternate_background_color
-        : s_display_settings.background_color
-    )
-  );
+  window_set_background_color(s_window, color_for_id(zone->background_color));
 }
 
 static void timezone_feedback_done(void *context) {
@@ -643,7 +765,7 @@ static void show_timezone_feedback(void) {
   text_layer_set_text_alignment(s_watchface, GTextAlignmentCenter);
   text_layer_set_text(
     s_watchface,
-    s_show_alternate_time ? s_display_settings.alternate_label : "LOCAL"
+    active_timezone_settings()->label
   );
   Layer *root = window_get_root_layer(s_window);
   GRect bounds = layer_get_bounds(root);
@@ -682,7 +804,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
  * @param now Current local time used to calculate the next occurrence.
  * @returns The next scheduled local date and time for the slot.
  */
-static time_t next_time(ReminderSlot *slot, time_t now) {
+static time_t next_local_time(ReminderSlot *slot, time_t now) {
   struct tm candidate = *localtime(&now);
   candidate.tm_hour = slot->hour;
   candidate.tm_min = slot->minute;
@@ -693,6 +815,58 @@ static time_t next_time(ReminderSlot *slot, time_t now) {
     result = mktime(&candidate);
   }
   return result;
+}
+
+static int32_t last_event_home_day(uint8_t slot_id, const TimezoneSettings *home) {
+  for (uint16_t index = s_state.event_count; index > 0; index--) {
+    ReminderEvent *event = &s_state.events[index - 1];
+    if (event->slot_id != slot_id) continue;
+    int32_t day_key = 0;
+    if (display_time_named_day_key(
+      event->scheduled_at,
+      home->utc_offset_minutes,
+      (time_t)home->transition_at,
+      home->transition_offset_minutes,
+      &day_key
+    )) return day_key;
+  }
+  return 0;
+}
+
+static bool home_day_key(time_t instant, int32_t *day_key) {
+  TimezoneSettings *home = &s_display_settings.zones[0];
+  if (!home->use_watch_local) {
+    return display_time_named_day_key(
+      instant,
+      home->utc_offset_minutes,
+      (time_t)home->transition_at,
+      home->transition_offset_minutes,
+      day_key
+    );
+  }
+  struct tm *local = localtime(&instant);
+  if (local == NULL) return false;
+  *day_key = (local->tm_year + 1900) * 10000
+    + (local->tm_mon + 1) * 100
+    + local->tm_mday;
+  return true;
+}
+
+static time_t next_time(uint8_t slot_id, ReminderSlot *slot, time_t now) {
+  TimezoneSettings *home = &s_display_settings.zones[0];
+  if (home->use_watch_local) return next_local_time(slot, now);
+  time_t occurrence = 0;
+  if (!display_time_next_named_occurrence(
+    now,
+    slot->hour,
+    slot->minute,
+    home->utc_offset_minutes,
+    (time_t)home->transition_at,
+    home->transition_offset_minutes,
+    last_event_home_day(slot_id, home),
+    &occurrence
+  )) return 0;
+  return occurrence;
 }
 
 /**
@@ -732,7 +906,8 @@ static void schedule_next(void) {
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     ReminderSlot *slot = &s_state.slots[i];
     slot->wakeup_id = -1;
-    slot->scheduled_at = slot->enabled ? next_time(slot, now) : 0;
+    slot->scheduled_at = slot->enabled ? next_time(i, slot, now) : 0;
+    if (slot->enabled && !slot->scheduled_at) s_schedule_error = true;
     if (slot->enabled && (earliest < 0 || slot->scheduled_at < earliest_time)) {
       earliest = i;
       earliest_time = slot->scheduled_at;
@@ -758,11 +933,18 @@ static void schedule_next(void) {
  * @returns The existing or newly assigned event sequence number.
  */
 static uint32_t add_event(uint8_t slot_id, time_t scheduled_at) {
+  int32_t scheduled_day = 0;
+  bool scheduled_day_valid = home_day_key(scheduled_at, &scheduled_day);
   for (uint16_t i = 0; i < s_state.event_count; i++) {
+    ReminderEvent *event = &s_state.events[i];
+    if (event->slot_id != slot_id) continue;
+    if (event->scheduled_at == scheduled_at) return event->sequence;
+    int32_t event_day = 0;
     if (
-      s_state.events[i].slot_id == slot_id
-      && s_state.events[i].scheduled_at == scheduled_at
-    ) return s_state.events[i].sequence;
+      scheduled_day_valid
+      && home_day_key(event->scheduled_at, &event_day)
+      && event_day == scheduled_day
+    ) return event->sequence;
   }
   if (s_state.event_count == EVENT_LIMIT) {
     memmove(
@@ -929,6 +1111,8 @@ static void render_main_item(uint8_t row, uint8_t item, bool selected) {
 }
 
 static void show_main(const char *note);
+static void show_home(void);
+static void show_timezones(void);
 
 /**
  * Applies selection styling to the visible rows for the current screen.
@@ -993,8 +1177,68 @@ static void show_main(const char *note) {
     "%s",
     s_storage_error
       ? "Storage save failed"
-      : note ? note : s_schedule_error ? "Alarm schedule failed" : "Hold Select: phone report"
+      : note ? note : s_schedule_error ? "Alarm schedule failed" : "Hold Down edit | Hold Up back"
   );
+  set_footer_text();
+}
+
+static void show_home(void) {
+  s_screen = SCREEN_HOME;
+  show_reminder_layers();
+  layout_main_rows();
+  snprintf(s_header_text, sizeof(s_header_text), "Configuration");
+  set_header_text();
+  set_row(0, s_home_selection == 0, "1", "REMINDERS");
+  set_row(1, s_home_selection == 1, "2", "TIMEZONES");
+  set_row(2, s_home_selection == 2, "3", "PHONE REPORT");
+  snprintf(s_footer_text, sizeof(s_footer_text), "Hold Down enter | Hold Up exit");
+  set_footer_text();
+}
+
+static uint8_t build_timezone_items(uint8_t items[TIMEZONE_COUNT]) {
+  uint8_t count = 0;
+  for (uint8_t index = 0; index < TIMEZONE_COUNT; index++) {
+    if (s_display_settings.zones[index].enabled) items[count++] = index;
+  }
+  return count;
+}
+
+static uint8_t selected_timezone_item(void) {
+  uint8_t items[TIMEZONE_COUNT];
+  uint8_t count = build_timezone_items(items);
+  if (s_timezone_selection >= count) s_timezone_selection = count - 1;
+  return items[s_timezone_selection];
+}
+
+static void show_timezones(void) {
+  s_screen = SCREEN_TIMEZONES;
+  show_reminder_layers();
+  layout_main_rows();
+  snprintf(s_header_text, sizeof(s_header_text), "Timezones");
+  set_header_text();
+  uint8_t items[TIMEZONE_COUNT];
+  uint8_t count = build_timezone_items(items);
+  if (s_timezone_selection >= count) s_timezone_selection = count - 1;
+  if (count <= MAIN_VISIBLE_ROWS) {
+    s_timezone_scroll_offset = 0;
+  } else if (s_timezone_selection < s_timezone_scroll_offset) {
+    s_timezone_scroll_offset = s_timezone_selection;
+  } else if (s_timezone_selection >= s_timezone_scroll_offset + MAIN_VISIBLE_ROWS) {
+    s_timezone_scroll_offset = s_timezone_selection - MAIN_VISIBLE_ROWS + 1;
+  }
+  for (uint8_t row = 0; row < MAIN_VISIBLE_ROWS; row++) {
+    clear_row(row);
+    uint8_t item_index = s_timezone_scroll_offset + row;
+    if (item_index >= count) continue;
+    uint8_t zone_index = items[item_index];
+    set_row(
+      row,
+      item_index == s_timezone_selection,
+      s_display_settings.zones[zone_index].label,
+      zone_index == 0 ? "HOME" : "DISPLAY"
+    );
+  }
+  snprintf(s_footer_text, sizeof(s_footer_text), "Hold Down show | Hold Up back");
   set_footer_text();
 }
 
@@ -1013,8 +1257,15 @@ static void show_edit(void) {
   set_row(1, s_edit_field == 1, "Hour", value);
   snprintf(value, sizeof(value), "%02u", s_edit_slot.minute);
   set_row(2, s_edit_field == 2, "Minute", value);
-  set_row(3, s_edit_field == 3, "Save", "SELECT");
-  snprintf(s_footer_text, sizeof(s_footer_text), "Select changes value");
+  set_row(3, s_edit_field == 3, "Save", "HOLD DOWN");
+  snprintf(
+    s_footer_text,
+    sizeof(s_footer_text),
+    "%s",
+    s_edit_value_mode
+      ? "Up/Down value | Hold Down done"
+      : "Up/Down field | Hold Down choose"
+  );
   set_footer_text();
 }
 
@@ -1033,9 +1284,9 @@ static void show_alert(uint8_t slot_id) {
   set_header_text();
   set_row(0, false, "Time", time_buffer);
   set_row(1, true, "UP", "ACKNOWLEDGE");
-  clear_row(2);
+  set_row(2, false, "DOWN", "DISMISS");
   clear_row(3);
-  snprintf(s_footer_text, sizeof(s_footer_text), "Records Taken");
+  snprintf(s_footer_text, sizeof(s_footer_text), "Up Taken | Down dismiss");
   set_footer_text();
 }
 
@@ -1190,7 +1441,7 @@ static void send_payload(int32_t type, const char *payload) {
 }
 
 static void send_settings_snapshot(void) {
-  static char payload[800];
+  static char payload[900];
   char install_id[16];
   snprintf(install_id, sizeof(install_id), "%08lx", (unsigned long)s_state.install_id);
   snprintf(
@@ -1198,10 +1449,11 @@ static void send_settings_snapshot(void) {
     sizeof(payload),
     "{\"installId\":\"%s\",\"revision\":%lu,\"droppedEvents\":%u,\"hour12\":%s,"
     "\"display\":{\"horizontal\":%u,\"vertical\":%u,\"fontSize\":%u,"
-    "\"textColor\":%u,\"backgroundColor\":%u,\"useLocalTime\":%s,"
-    "\"utcOffsetMinutes\":%d},\"alternate\":{\"label\":\"%s\","
-    "\"textColor\":%u,\"backgroundColor\":%u,\"offsetMinutes\":%d,"
-    "\"transitionAt\":%ld,\"transitionOffsetMinutes\":%d},\"slots\":["
+    "\"textColor\":%u,\"backgroundColor\":%u},\"zones\":["
+    "{\"id\":0,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u},"
+    "{\"id\":1,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u},"
+    "{\"id\":2,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u},"
+    "{\"id\":3,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u}],\"slots\":["
     "{\"id\":0,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
     "{\"id\":1,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
     "{\"id\":2,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
@@ -1215,14 +1467,22 @@ static void send_settings_snapshot(void) {
     s_display_settings.font_size,
     s_display_settings.text_color,
     s_display_settings.background_color,
-    "true",
-    0,
-    s_display_settings.alternate_label,
-    s_display_settings.alternate_text_color,
-    s_display_settings.alternate_background_color,
-    s_display_settings.alternate_utc_offset_minutes,
-    (long)s_display_settings.alternate_transition_at,
-    s_display_settings.alternate_transition_offset_minutes,
+    s_display_settings.zones[0].enabled ? "true" : "false",
+    s_display_settings.zones[0].label,
+    s_display_settings.zones[0].text_color,
+    s_display_settings.zones[0].background_color,
+    s_display_settings.zones[1].enabled ? "true" : "false",
+    s_display_settings.zones[1].label,
+    s_display_settings.zones[1].text_color,
+    s_display_settings.zones[1].background_color,
+    s_display_settings.zones[2].enabled ? "true" : "false",
+    s_display_settings.zones[2].label,
+    s_display_settings.zones[2].text_color,
+    s_display_settings.zones[2].background_color,
+    s_display_settings.zones[3].enabled ? "true" : "false",
+    s_display_settings.zones[3].label,
+    s_display_settings.zones[3].text_color,
+    s_display_settings.zones[3].background_color,
     s_state.slots[0].hour, s_state.slots[0].minute, s_state.slots[0].enabled ? "true" : "false",
     s_state.slots[1].hour, s_state.slots[1].minute, s_state.slots[1].enabled ? "true" : "false",
     s_state.slots[2].hour, s_state.slots[2].minute, s_state.slots[2].enabled ? "true" : "false",
@@ -1286,7 +1546,7 @@ static void send_sync_item(void) {
     return;
   }
   s_syncing = false;
-  if (s_sync_show_status) show_main("Report sent");
+  if (s_sync_show_status) show_home();
 }
 
 /**
@@ -1309,62 +1569,87 @@ static void start_sync(bool show_status) {
   set_row(0, false, "Phone", "REPORT");
   set_row(1, false, "Status", "SENDING");
   set_row(2, false, "History", "RESEND ALL");
-  set_row(3, false, "Back", "EXIT");
-  snprintf(s_footer_text, sizeof(s_footer_text), "Sending report...");
+  set_row(3, false, "Exit", "HOLD UP");
+  snprintf(s_footer_text, sizeof(s_footer_text), "Sending | Hold Up exit");
   set_footer_text();
   send_sync_item();
 }
 
-static bool read_alternate_settings(
+static bool read_timezone_settings(
   DictionaryIterator *iterator,
   DisplaySettings *settings
 ) {
-  Tuple *text_color = dict_find(iterator, MESSAGE_KEY_ALT_TEXT_COLOR);
-  Tuple *background_color = dict_find(iterator, MESSAGE_KEY_ALT_BACKGROUND_COLOR);
-  Tuple *label = dict_find(iterator, MESSAGE_KEY_ALT_TZ_LABEL);
-  Tuple *offset = dict_find(iterator, MESSAGE_KEY_ALT_UTC_OFFSET_MINUTES);
-  Tuple *transition_at = dict_find(iterator, MESSAGE_KEY_ALT_TRANSITION_AT);
-  Tuple *transition_offset = dict_find(
-    iterator,
-    MESSAGE_KEY_ALT_TRANSITION_OFFSET_MINUTES
-  );
-  if (
-    !text_color
-    || !background_color
-    || !label
-    || label->type != TUPLE_CSTRING
-    || !offset
-    || !transition_at
-    || !transition_offset
-    || text_color->value->int32 < 0
-    || text_color->value->int32 > 9
-    || background_color->value->int32 < 0
-    || background_color->value->int32 > 9
-    || offset->value->int32 < DISPLAY_TIME_MIN_OFFSET_MINUTES
-    || offset->value->int32 > DISPLAY_TIME_MAX_OFFSET_MINUTES
-    || offset->value->int32 % DISPLAY_TIME_OFFSET_STEP_MINUTES != 0
-    || transition_at->value->int32 < 0
-    || transition_offset->value->int32 < DISPLAY_TIME_MIN_OFFSET_MINUTES
-    || transition_offset->value->int32 > DISPLAY_TIME_MAX_OFFSET_MINUTES
-    || transition_offset->value->int32 % DISPLAY_TIME_OFFSET_STEP_MINUTES != 0
-  ) return false;
+  const uint32_t enabled_keys[TIMEZONE_COUNT] = {
+    MESSAGE_KEY_TZ_0_ENABLED, MESSAGE_KEY_TZ_1_ENABLED,
+    MESSAGE_KEY_TZ_2_ENABLED, MESSAGE_KEY_TZ_3_ENABLED,
+  };
+  const uint32_t label_keys[TIMEZONE_COUNT] = {
+    MESSAGE_KEY_TZ_0_LABEL, MESSAGE_KEY_TZ_1_LABEL,
+    MESSAGE_KEY_TZ_2_LABEL, MESSAGE_KEY_TZ_3_LABEL,
+  };
+  const uint32_t text_color_keys[TIMEZONE_COUNT] = {
+    MESSAGE_KEY_TZ_0_TEXT_COLOR, MESSAGE_KEY_TZ_1_TEXT_COLOR,
+    MESSAGE_KEY_TZ_2_TEXT_COLOR, MESSAGE_KEY_TZ_3_TEXT_COLOR,
+  };
+  const uint32_t background_color_keys[TIMEZONE_COUNT] = {
+    MESSAGE_KEY_TZ_0_BACKGROUND_COLOR, MESSAGE_KEY_TZ_1_BACKGROUND_COLOR,
+    MESSAGE_KEY_TZ_2_BACKGROUND_COLOR, MESSAGE_KEY_TZ_3_BACKGROUND_COLOR,
+  };
+  const uint32_t offset_keys[TIMEZONE_COUNT] = {
+    MESSAGE_KEY_TZ_0_UTC_OFFSET_MINUTES, MESSAGE_KEY_TZ_1_UTC_OFFSET_MINUTES,
+    MESSAGE_KEY_TZ_2_UTC_OFFSET_MINUTES, MESSAGE_KEY_TZ_3_UTC_OFFSET_MINUTES,
+  };
+  const uint32_t transition_at_keys[TIMEZONE_COUNT] = {
+    MESSAGE_KEY_TZ_0_TRANSITION_AT, MESSAGE_KEY_TZ_1_TRANSITION_AT,
+    MESSAGE_KEY_TZ_2_TRANSITION_AT, MESSAGE_KEY_TZ_3_TRANSITION_AT,
+  };
+  const uint32_t transition_offset_keys[TIMEZONE_COUNT] = {
+    MESSAGE_KEY_TZ_0_TRANSITION_OFFSET_MINUTES,
+    MESSAGE_KEY_TZ_1_TRANSITION_OFFSET_MINUTES,
+    MESSAGE_KEY_TZ_2_TRANSITION_OFFSET_MINUTES,
+    MESSAGE_KEY_TZ_3_TRANSITION_OFFSET_MINUTES,
+  };
 
-  if (strlen(label->value->cstring) > TIMEZONE_LABEL_LENGTH) return false;
-  char proposed_label[TIMEZONE_LABEL_LENGTH + 1];
-  snprintf(proposed_label, sizeof(proposed_label), "%s", label->value->cstring);
-  if (!timezone_label_valid(proposed_label)) return false;
-
-  settings->alternate_text_color = (uint8_t)text_color->value->int32;
-  settings->alternate_background_color = (uint8_t)background_color->value->int32;
-  settings->alternate_utc_offset_minutes = (int16_t)offset->value->int32;
-  settings->alternate_transition_at = transition_at->value->int32;
-  settings->alternate_transition_offset_minutes = (int16_t)transition_offset->value->int32;
-  snprintf(
-    settings->alternate_label,
-    sizeof(settings->alternate_label),
-    "%s",
-    proposed_label
-  );
+  for (uint8_t index = 0; index < TIMEZONE_COUNT; index++) {
+    Tuple *enabled = dict_find(iterator, enabled_keys[index]);
+    Tuple *label = dict_find(iterator, label_keys[index]);
+    Tuple *text_color = dict_find(iterator, text_color_keys[index]);
+    Tuple *background_color = dict_find(iterator, background_color_keys[index]);
+    Tuple *offset = dict_find(iterator, offset_keys[index]);
+    Tuple *transition_at = dict_find(iterator, transition_at_keys[index]);
+    Tuple *transition_offset = dict_find(iterator, transition_offset_keys[index]);
+    if (
+      !enabled || enabled->value->int32 < 0 || enabled->value->int32 > 1
+      || (index == 0 && enabled->value->int32 != 1)
+      || !label || label->type != TUPLE_CSTRING
+      || strlen(label->value->cstring) > TIMEZONE_LABEL_LENGTH
+      || !text_color || text_color->value->int32 < 0 || text_color->value->int32 > 9
+      || !background_color || background_color->value->int32 < 0
+      || background_color->value->int32 > 9
+      || !offset || offset->value->int32 < DISPLAY_TIME_MIN_OFFSET_MINUTES
+      || offset->value->int32 > DISPLAY_TIME_MAX_OFFSET_MINUTES
+      || offset->value->int32 % DISPLAY_TIME_OFFSET_STEP_MINUTES != 0
+      || !transition_at || transition_at->value->int32 < 0
+      || !transition_offset
+      || transition_offset->value->int32 < DISPLAY_TIME_MIN_OFFSET_MINUTES
+      || transition_offset->value->int32 > DISPLAY_TIME_MAX_OFFSET_MINUTES
+      || transition_offset->value->int32 % DISPLAY_TIME_OFFSET_STEP_MINUTES != 0
+    ) return false;
+    char proposed_label[TIMEZONE_LABEL_LENGTH + 1];
+    snprintf(proposed_label, sizeof(proposed_label), "%s", label->value->cstring);
+    if (!timezone_label_valid(proposed_label)) return false;
+    TimezoneSettings *zone = &settings->zones[index];
+    zone->enabled = (uint8_t)enabled->value->int32;
+    zone->use_watch_local = 0;
+    zone->text_color = (uint8_t)text_color->value->int32;
+    zone->background_color = (uint8_t)background_color->value->int32;
+    zone->utc_offset_minutes = (int16_t)offset->value->int32;
+    zone->transition_at = transition_at->value->int32;
+    zone->transition_offset_minutes = (int16_t)transition_offset->value->int32;
+    snprintf(zone->label, sizeof(zone->label), "%s", proposed_label);
+  }
+  settings->text_color = settings->zones[0].text_color;
+  settings->background_color = settings->zones[0].background_color;
   return true;
 }
 
@@ -1382,7 +1667,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   }
   if (type->value->int32 == 9) {
     DisplaySettings proposed_display = s_display_settings;
-    if (!read_alternate_settings(iterator, &proposed_display)) return;
+    if (!read_timezone_settings(iterator, &proposed_display)) return;
     s_display_settings = proposed_display;
     save_display_settings();
     if (s_screen == SCREEN_WATCHFACE && !s_timezone_feedback_timer) {
@@ -1393,7 +1678,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   if (type->value->int32 != 8) return;
 
   DisplaySettings proposed_display = s_display_settings;
-  if (!read_alternate_settings(iterator, &proposed_display)) {
+  if (!read_timezone_settings(iterator, &proposed_display)) {
     send_settings_snapshot();
     return;
   }
@@ -1458,7 +1743,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   proposed_display.text_color = (uint8_t)display_values[3];
   proposed_display.background_color = (uint8_t)display_values[4];
   s_display_settings = proposed_display;
-  s_show_alternate_time = false;
+  s_active_timezone = 0;
   s_state.settings_revision++;
   save_display_settings();
   schedule_next();
@@ -1504,89 +1789,59 @@ static void handle_alert_button(ReminderAlertButton button) {
   }
 }
 
-/**
- * Handles a SELECT click according to the current screen.
- *
- * Opens the reminder list or selected reminder, changes the selected edit
- * field or saves valid reminder changes.
- *
- * @param recognizer The button click recogniser.
- * @param context The callback context.
- */
-static void select_click(ClickRecognizerRef recognizer, void *context) {
-  if (s_select_long) {
-    s_select_long = false;
-    return;
-  }
-  if (s_screen == SCREEN_WATCHFACE || s_screen == SCREEN_MAIN) {
-    bool enabled[SLOT_COUNT];
-    for (uint8_t slot = 0; slot < SLOT_COUNT; slot++) {
-      enabled[slot] = s_state.slots[slot].enabled;
-    }
-    ReminderNavigation navigation = {
-      .screen = s_screen == SCREEN_WATCHFACE
-        ? REMINDER_NAVIGATION_TIME
-        : REMINDER_NAVIGATION_MAIN,
-      .main_selection = s_main_selection,
-      .selected_slot = s_selected_slot,
-      .edit_field = s_edit_field,
-      .enable_selected_slot = false,
-    };
-    reminder_navigation_select(&navigation, enabled);
-    s_main_selection = navigation.main_selection;
-    if (navigation.screen == REMINDER_NAVIGATION_MAIN) {
-      show_main(NULL);
+static void cycle_active_timezone(int8_t direction) {
+  for (uint8_t step = 0; step < TIMEZONE_COUNT; step++) {
+    s_active_timezone = (s_active_timezone + TIMEZONE_COUNT + direction) % TIMEZONE_COUNT;
+    if (s_display_settings.zones[s_active_timezone].enabled) {
+      show_timezone_feedback();
       return;
     }
-
-    s_selected_slot = navigation.selected_slot;
-    s_edit_field = navigation.edit_field;
-    s_edit_slot = s_state.slots[s_selected_slot];
-    if (navigation.enable_selected_slot) s_edit_slot.enabled = true;
-    show_edit();
-  } else if (s_screen == SCREEN_EDIT) {
-    if (s_edit_field == 0) {
-      s_edit_slot.enabled = !s_edit_slot.enabled;
-      set_row(0, true, "Enabled", s_edit_slot.enabled ? "ON" : "OFF");
-    } else if (s_edit_field == 1) {
-      char value[4];
-      s_edit_slot.hour = (s_edit_slot.hour + 1) % 24;
-      snprintf(value, sizeof(value), "%02u", s_edit_slot.hour);
-      set_row(1, true, "Hour", value);
-    } else if (s_edit_field == 2) {
-      char value[4];
-      s_edit_slot.minute = (s_edit_slot.minute + 5) % 60;
-      snprintf(value, sizeof(value), "%02u", s_edit_slot.minute);
-      set_row(2, true, "Minute", value);
-    }
-    else {
-      ReminderSlot proposed[SLOT_COUNT];
-      memcpy(proposed, s_state.slots, sizeof(proposed));
-      proposed[s_selected_slot] = s_edit_slot;
-      if (times_too_close(proposed)) {
-        snprintf(s_footer_text, sizeof(s_footer_text), "Need 2 minute gap");
-        set_footer_text();
-        return;
-      }
-      s_state.slots[s_selected_slot] = s_edit_slot;
-      s_state.settings_revision++;
-      schedule_next();
-      show_main(s_schedule_error ? "Saved; alarm failed" : "Saved");
-      return;
-    }
-  } else if (s_screen == SCREEN_ALERT) {
-    handle_alert_button(REMINDER_ALERT_BUTTON_SELECT);
   }
 }
 
-/**
- * Starts phone synchronisation when the SELECT button is held on the main screen.
- */
-static void select_long_click(ClickRecognizerRef recognizer, void *context) {
-  if (s_screen == SCREEN_MAIN) {
-    s_select_long = true;
-    start_sync(true);
+static void open_selected_reminder(void) {
+  bool enabled[SLOT_COUNT];
+  for (uint8_t slot = 0; slot < SLOT_COUNT; slot++) {
+    enabled[slot] = s_state.slots[slot].enabled;
   }
+  ReminderNavigation navigation = {
+    .screen = REMINDER_NAVIGATION_MAIN,
+    .main_selection = s_main_selection,
+  };
+  reminder_navigation_open(&navigation, enabled);
+  s_main_selection = navigation.main_selection;
+  s_selected_slot = navigation.selected_slot;
+  s_edit_field = navigation.edit_field;
+  s_edit_value_mode = false;
+  s_edit_slot = s_state.slots[s_selected_slot];
+  if (navigation.enable_selected_slot) s_edit_slot.enabled = true;
+  show_edit();
+}
+
+static void change_edit_value(int8_t direction) {
+  if (s_edit_field == 0) {
+    s_edit_slot.enabled = !s_edit_slot.enabled;
+  } else if (s_edit_field == 1) {
+    s_edit_slot.hour = (s_edit_slot.hour + 24 + direction) % 24;
+  } else if (s_edit_field == 2) {
+    s_edit_slot.minute = (s_edit_slot.minute + 60 + direction * 5) % 60;
+  }
+  show_edit();
+}
+
+static void save_edit(void) {
+  ReminderSlot proposed[SLOT_COUNT];
+  memcpy(proposed, s_state.slots, sizeof(proposed));
+  proposed[s_selected_slot] = s_edit_slot;
+  if (times_too_close(proposed)) {
+    snprintf(s_footer_text, sizeof(s_footer_text), "Need 2 minute gap");
+    set_footer_text();
+    return;
+  }
+  s_state.slots[s_selected_slot] = s_edit_slot;
+  s_state.settings_revision++;
+  schedule_next();
+  show_main(s_schedule_error ? "Saved; alarm failed" : "Saved");
 }
 
 /**
@@ -1595,14 +1850,27 @@ static void select_long_click(ClickRecognizerRef recognizer, void *context) {
 static void up_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_ALERT) {
     handle_alert_button(REMINDER_ALERT_BUTTON_UP);
+  } else if (s_screen == SCREEN_WATCHFACE) {
+    cycle_active_timezone(-1);
+  } else if (s_screen == SCREEN_HOME) {
+    s_home_selection = (s_home_selection + 2) % 3;
+    show_home();
   } else if (s_screen == SCREEN_MAIN) {
     uint8_t items[SLOT_COUNT + 1];
     uint8_t item_count = build_main_items(items);
     s_main_selection = (s_main_selection + item_count - 1) % item_count;
     refresh_selection();
   } else if (s_screen == SCREEN_EDIT) {
-    s_edit_field = (s_edit_field + 3) % 4;
-    refresh_selection();
+    if (s_edit_value_mode) change_edit_value(1);
+    else {
+      s_edit_field = (s_edit_field + 3) % 4;
+      refresh_selection();
+    }
+  } else if (s_screen == SCREEN_TIMEZONES) {
+    uint8_t items[TIMEZONE_COUNT];
+    uint8_t item_count = build_timezone_items(items);
+    s_timezone_selection = (s_timezone_selection + item_count - 1) % item_count;
+    show_timezones();
   }
 }
 
@@ -1616,37 +1884,68 @@ static void down_click(ClickRecognizerRef recognizer, void *context) {
   if (s_screen == SCREEN_ALERT) {
     handle_alert_button(REMINDER_ALERT_BUTTON_DOWN);
   } else if (s_screen == SCREEN_WATCHFACE) {
-    s_show_alternate_time = !s_show_alternate_time;
-    show_timezone_feedback();
+    cycle_active_timezone(1);
+  } else if (s_screen == SCREEN_HOME) {
+    s_home_selection = (s_home_selection + 1) % 3;
+    show_home();
   } else if (s_screen == SCREEN_MAIN) {
     uint8_t items[SLOT_COUNT + 1];
     uint8_t item_count = build_main_items(items);
     s_main_selection = (s_main_selection + 1) % item_count;
     refresh_selection();
   } else if (s_screen == SCREEN_EDIT) {
-    s_edit_field = (s_edit_field + 1) % 4;
-    refresh_selection();
+    if (s_edit_value_mode) change_edit_value(-1);
+    else {
+      s_edit_field = (s_edit_field + 1) % 4;
+      refresh_selection();
+    }
+  } else if (s_screen == SCREEN_TIMEZONES) {
+    uint8_t items[TIMEZONE_COUNT];
+    uint8_t item_count = build_timezone_items(items);
+    s_timezone_selection = (s_timezone_selection + 1) % item_count;
+    show_timezones();
   }
 }
 
-/**
- * Handles the Back button according to the current screen.
- *
- * @param recognizer Button recogniser that triggered the click.
- * @param context Callback context.
- */
-static void back_click(ClickRecognizerRef recognizer, void *context) {
+static void up_long_click(ClickRecognizerRef recognizer, void *context) {
+  if (s_screen == SCREEN_ALERT || s_screen == SCREEN_WATCHFACE) return;
   if (s_screen == SCREEN_EDIT) {
+    s_edit_value_mode = false;
     show_main("Edit cancelled");
-  } else if (s_screen == SCREEN_ALERT) {
-    handle_alert_button(REMINDER_ALERT_BUTTON_BACK);
-  } else if (s_screen == SCREEN_MAIN) {
+  } else if (s_screen == SCREEN_HOME) {
     show_watchface();
   } else if (s_screen == SCREEN_SYNC) {
     s_syncing = false;
-    show_main(NULL);
+    show_home();
   } else {
-    window_stack_pop(true);
+    show_home();
+  }
+}
+
+static void down_long_click(ClickRecognizerRef recognizer, void *context) {
+  if (s_screen == SCREEN_ALERT) return;
+  if (s_screen == SCREEN_WATCHFACE) {
+    show_home();
+  } else if (s_screen == SCREEN_HOME) {
+    if (s_home_selection == 0) show_main(NULL);
+    else if (s_home_selection == 1) show_timezones();
+    else start_sync(true);
+  } else if (s_screen == SCREEN_MAIN) {
+    open_selected_reminder();
+  } else if (s_screen == SCREEN_TIMEZONES) {
+    s_active_timezone = selected_timezone_item();
+    show_watchface();
+    show_timezone_feedback();
+  } else if (s_screen == SCREEN_EDIT) {
+    if (s_edit_value_mode) {
+      s_edit_value_mode = false;
+      show_edit();
+    } else if (s_edit_field == 3) {
+      save_edit();
+    } else {
+      s_edit_value_mode = true;
+      show_edit();
+    }
   }
 }
 
@@ -1654,11 +1953,10 @@ static void back_click(ClickRecognizerRef recognizer, void *context) {
  * Registers button handlers for single- and long-press interactions.
  */
 static void click_config_provider(void *context) {
-  window_single_click_subscribe(BUTTON_ID_SELECT, select_click);
-  window_long_click_subscribe(BUTTON_ID_SELECT, 700, select_long_click, NULL);
   window_single_click_subscribe(BUTTON_ID_UP, up_click);
   window_single_click_subscribe(BUTTON_ID_DOWN, down_click);
-  window_single_click_subscribe(BUTTON_ID_BACK, back_click);
+  window_long_click_subscribe(BUTTON_ID_UP, 700, up_long_click, NULL);
+  window_long_click_subscribe(BUTTON_ID_DOWN, 700, down_long_click, NULL);
 }
 
 /**

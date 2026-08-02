@@ -2,32 +2,34 @@
 
 ## Configure reminders
 
-1. Press Select from the word-time display.
-2. Use Up/Down to choose a reminder or **+ Add reminder**.
-3. Press Select to edit.
+1. Hold Down from the word-time display to open **Configuration**.
+2. Choose **Reminders** with Up/Down, then hold Down.
+3. Choose a reminder or **+ Add reminder**, then hold Down.
 4. Use Up/Down to choose Enabled, Hour, Minute, or Save.
-5. Press Select to change the selected value or save.
-6. Press Back to cancel or return to the word-time display.
+5. Hold Down to enter a field. Change it with Up/Down, then hold Down to confirm.
+6. On Save, hold Down to persist and reschedule.
+7. Hold Up to cancel editing or move back through configuration screens.
 
-## Switch to a second timezone
+Select and Back are intentionally unused for app navigation.
+
+## Configure and switch timezones
 
 1. Open Number Watch settings in the rePebble phone app.
-2. Under **Second timezone**, choose a named timezone such as
-   **Europe/London**.
-3. Choose its switch label and text/background colours, then save.
-4. On the normal word-time display, press lower-right **Down** to switch.
-5. Press Down again to return to local time.
+2. Configure **Home** with a named IANA timezone and label.
+3. Use **+ Add timezone** to enable up to three more named timezones.
+4. Choose a label and text/background colours for each, then save.
+5. On the watchface, press Up for the previous checked timezone or Down for the
+   next. Each change briefly shows that timezone's label.
 
-Number Watch starts in local time whenever the watchapp launches. Local time
-uses the watch timezone synchronised by the connected phone. A switch briefly
-shows the configured label or **LOCAL**; the selected timezone's colour pair
-remains visible afterward.
+Number Watch starts on Home. Only checked timezones participate in switching.
+You can also hold Down, choose **Timezones**, then hold Down on a label to show
+it and return to the watchface.
 
 The phone resolves daylight-saving rules and sends the current offset plus the
 next transition when its bridge connects, settings are saved, or a report sync
 occurs. The watch stores that transition, so one upcoming daylight-saving
 change works while disconnected. Later phone contact refreshes the next one.
-This changes only the word-time display; reminders remain in watch-local time.
+Reminder schedules follow the named Home calendar timezone.
 
 ## Acknowledge a reminder
 
@@ -35,25 +37,22 @@ When a reminder is due, the watch vibrates and displays **TAKE PILL 1**,
 **TAKE PILL 2**, and so on. Respond while that alert remains visible:
 
 ```text
-left button          right buttons
+right buttons
 
-BACK                  UP
-Dismiss               Acknowledge → Taken
+UP
+Acknowledge → Taken
 
-                      SELECT
-                      —
-
-                      DOWN
-                      —
+DOWN
+Dismiss → Not taken
 ```
 
 - Press upper-right **Up** to acknowledge and record **Taken**.
-- Press left **Back** to dismiss without changing **No response**.
-- Select and Down do nothing on this acknowledgement-only screen.
+- Press lower-right **Down** to dismiss without recording Taken.
+- Select and Back are not app actions on this screen.
 
 The buttons work only while the reminder alert is visible. The alert vibrates
 every 30 seconds for five minutes. If it expires without Up, it
-remains **No response**.
+remains **Not taken**.
 
 After Up, Number Watch returns to its word-time display. The watch saves Taken
 before returning.
@@ -63,13 +62,23 @@ before returning.
 1. Keep the watch connected to the phone.
 2. Open the app's gear or **Settings** action in rePebble.
 3. Check that **Last synced** changes to the current time.
-4. Expand today's row under **Daily detail**.
+4. Expand today's row under **Taken list**.
 5. Confirm the reminder says **Taken**.
+
+Every Home day has one row per expected reminder slot. For example, if two
+reminders were expected, the list contains exactly two pills marked Taken or
+Not taken. Duplicate watch events cannot create extra pills.
+
+For a Taken pill, choose any checked timezone in **Taken time**. The underlying
+answer is stored as one UTC instant; this selector only changes its calendar
+date/time rendering. The phone keeps the Home timezone and Home day first used
+for that event, so travel and 23/25-hour daylight-saving days do not require
+fixed 24-hour arithmetic. Save with **Save taken timezones**.
 
 The phone does not create the acknowledgement. It receives the saved outcome
 from the watch during synchronisation.
 
-## If the phone still shows No response
+## If the phone still shows Not taken
 
 Check these in order:
 

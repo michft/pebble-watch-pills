@@ -26,7 +26,7 @@ function withReleaseFixture(packageJson, changelog, callback) {
 test("current package version has release notes", () => {
   const metadata = readReleaseMetadata(__dirname + "/..");
 
-  assert.equal(metadata.version, "0.2.7");
+  assert.equal(metadata.version, "0.2.8");
   assert.equal(metadata.tag, `v${metadata.version}`);
   assert.ok(metadata.notes.trim().length > 0);
 });

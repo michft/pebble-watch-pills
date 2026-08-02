@@ -15,7 +15,7 @@ test("ships Number Watch as a button-capable watchapp", () => {
   assert.equal(packageJson.pebble.watchapp.watchface, false);
 });
 
-test("native Select navigation initializes reminder editing state", () => {
+test("native reminder navigation initializes editing state", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "number-watch-nav-"));
   const binary = path.join(directory, "watch-navigation-test");
 
@@ -41,9 +41,17 @@ test("native Select navigation initializes reminder editing state", () => {
   }
 });
 
-test("normal time Down toggles alternate timezone feedback", () => {
+test("watch navigation uses Up and Down without Select or Back conflicts", () => {
   const source = fs.readFileSync(path.join(root, "src/c/main.c"), "utf8");
 
-  assert.match(source, /s_screen == SCREEN_WATCHFACE[\s\S]+s_show_alternate_time = !s_show_alternate_time;[\s\S]+show_timezone_feedback\(\)/);
-  assert.match(source, /type->value->int32 == 9[\s\S]+read_alternate_settings/);
+  assert.match(source, /static Screen s_screen = SCREEN_WATCHFACE/);
+  assert.match(source, /s_screen == SCREEN_WATCHFACE[\s\S]+cycle_active_timezone\(-1\)/);
+  assert.match(source, /s_screen == SCREEN_WATCHFACE[\s\S]+cycle_active_timezone\(1\)/);
+  assert.match(source, /window_long_click_subscribe\(BUTTON_ID_UP/);
+  assert.match(source, /window_long_click_subscribe\(BUTTON_ID_DOWN/);
+  assert.doesNotMatch(source, /click_subscribe\(BUTTON_ID_SELECT/);
+  assert.doesNotMatch(source, /click_subscribe\(BUTTON_ID_BACK/);
+  assert.match(source, /s_screen == SCREEN_ALERT[\s\S]+REMINDER_ALERT_BUTTON_UP/);
+  assert.match(source, /s_screen == SCREEN_ALERT[\s\S]+REMINDER_ALERT_BUTTON_DOWN/);
+  assert.match(source, /type->value->int32 == 9[\s\S]+read_timezone_settings/);
 });
