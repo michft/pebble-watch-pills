@@ -2,6 +2,11 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.7] - 2026-08-02
+
+- Update the default Emery app-store screenshot to show `22:23` in the large
+  white-on-black word-time layout.
+
 ## [0.2.6] - 2026-08-01
 
 - Split only `seventeen` at Large font size, leaving fitting teen words whole
