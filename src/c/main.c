@@ -908,7 +908,11 @@ static void schedule_next(void) {
     slot->wakeup_id = -1;
     slot->scheduled_at = slot->enabled ? next_time(i, slot, now) : 0;
     if (slot->enabled && !slot->scheduled_at) s_schedule_error = true;
-    if (slot->enabled && (earliest < 0 || slot->scheduled_at < earliest_time)) {
+    if (
+      slot->enabled
+      && slot->scheduled_at
+      && (earliest < 0 || slot->scheduled_at < earliest_time)
+    ) {
       earliest = i;
       earliest_time = slot->scheduled_at;
     }
@@ -1206,6 +1210,7 @@ static uint8_t build_timezone_items(uint8_t items[TIMEZONE_COUNT]) {
 static uint8_t selected_timezone_item(void) {
   uint8_t items[TIMEZONE_COUNT];
   uint8_t count = build_timezone_items(items);
+  if (count == 0) return 0;
   if (s_timezone_selection >= count) s_timezone_selection = count - 1;
   return items[s_timezone_selection];
 }
@@ -1218,6 +1223,14 @@ static void show_timezones(void) {
   set_header_text();
   uint8_t items[TIMEZONE_COUNT];
   uint8_t count = build_timezone_items(items);
+  if (count == 0) {
+    s_timezone_selection = 0;
+    s_timezone_scroll_offset = 0;
+    for (uint8_t row = 0; row < MAIN_VISIBLE_ROWS; row++) clear_row(row);
+    snprintf(s_footer_text, sizeof(s_footer_text), "No timezones | Hold Up back");
+    set_footer_text();
+    return;
+  }
   if (s_timezone_selection >= count) s_timezone_selection = count - 1;
   if (count <= MAIN_VISIBLE_ROWS) {
     s_timezone_scroll_offset = 0;
@@ -1670,6 +1683,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
     if (!read_timezone_settings(iterator, &proposed_display)) return;
     s_display_settings = proposed_display;
     save_display_settings();
+    schedule_next();
     if (s_screen == SCREEN_WATCHFACE && !s_timezone_feedback_timer) {
       update_watchface();
     }
@@ -1869,6 +1883,7 @@ static void up_click(ClickRecognizerRef recognizer, void *context) {
   } else if (s_screen == SCREEN_TIMEZONES) {
     uint8_t items[TIMEZONE_COUNT];
     uint8_t item_count = build_timezone_items(items);
+    if (item_count == 0) return;
     s_timezone_selection = (s_timezone_selection + item_count - 1) % item_count;
     show_timezones();
   }
@@ -1902,6 +1917,7 @@ static void down_click(ClickRecognizerRef recognizer, void *context) {
   } else if (s_screen == SCREEN_TIMEZONES) {
     uint8_t items[TIMEZONE_COUNT];
     uint8_t item_count = build_timezone_items(items);
+    if (item_count == 0) return;
     s_timezone_selection = (s_timezone_selection + 1) % item_count;
     show_timezones();
   }

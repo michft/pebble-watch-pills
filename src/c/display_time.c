@@ -134,9 +134,24 @@ bool display_time_next_named_occurrence(
     int target_minutes = hour * 60 + minute;
     int previous_minutes = previous_parts.tm_hour * 60 + previous_parts.tm_min;
     int current_minutes = parts.tm_hour * 60 + parts.tm_min;
-    bool skipped_by_forward_transition = previous_day_key == day_key
+    bool same_day_skip = previous_day_key == day_key
       && previous_minutes < target_minutes
       && current_minutes > target_minutes;
+    bool date_advanced = parts.tm_year > previous_parts.tm_year
+      || (
+        parts.tm_year == previous_parts.tm_year
+        && (
+          parts.tm_mon > previous_parts.tm_mon
+          || (
+            parts.tm_mon == previous_parts.tm_mon
+            && parts.tm_mday > previous_parts.tm_mday
+          )
+        )
+      );
+    bool midnight_skip = date_advanced
+      && previous_minutes > current_minutes
+      && target_minutes < current_minutes;
+    bool skipped_by_forward_transition = same_day_skip || midnight_skip;
     if (
       (
         (parts.tm_hour == hour && parts.tm_min == minute)

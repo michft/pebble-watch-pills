@@ -1,4 +1,6 @@
 var timezone = require("./timezone");
+var TIMEZONE_COUNT = timezone.TIMEZONE_COUNT;
+var normaliseZones = timezone.normaliseZones;
 
 /**
  * Escapes HTML special characters in a value converted to a string.
@@ -57,54 +59,14 @@ function formatSlotTime(slot, hour12) {
   return hour + ":" + pad2(slot.minute) + " " + suffix;
 }
 
-function normaliseZones(settings) {
-  var homeTimeZone = timezone.systemTimeZone();
-  var fallback = [
-    { id: 0, enabled: true, timeZone: homeTimeZone, label: timezone.labelForTimeZone(homeTimeZone), textColor: 0, backgroundColor: 1 },
-    { id: 1, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 4 },
-    { id: 2, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 4 },
-    { id: 3, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 4 },
-  ];
-  if (settings && settings.display) {
-    fallback[0].textColor = Number.isInteger(settings.display.textColor)
-      ? settings.display.textColor
-      : fallback[0].textColor;
-    fallback[0].backgroundColor = Number.isInteger(settings.display.backgroundColor)
-      ? settings.display.backgroundColor
-      : fallback[0].backgroundColor;
-  }
-  if (settings && Array.isArray(settings.zones) && settings.zones.length === 4) {
-    return settings.zones.map(function (zone, index) {
-      var base = fallback[index];
-      return {
-        id: index,
-        enabled: index === 0 || zone.enabled === true,
-        timeZone: typeof zone.timeZone === "string" ? zone.timeZone : base.timeZone,
-        label: typeof zone.label === "string" ? zone.label : base.label,
-        textColor: Number.isInteger(zone.textColor) ? zone.textColor : base.textColor,
-        backgroundColor: Number.isInteger(zone.backgroundColor) ? zone.backgroundColor : base.backgroundColor,
-      };
-    });
-  }
-  if (settings && settings.alternate) {
-    fallback[1] = {
-      id: 1,
-      enabled: true,
-      timeZone: settings.alternate.timeZone || "UTC",
-      label: settings.alternate.label || "UTC",
-      textColor: Number.isInteger(settings.alternate.textColor) ? settings.alternate.textColor : 1,
-      backgroundColor: Number.isInteger(settings.alternate.backgroundColor) ? settings.alternate.backgroundColor : 4,
-    };
-  }
-  return fallback;
-}
-
 function expectedEvents(events, homeTimeZone) {
   var byExpectedDose = {};
   events.forEach(function (event) {
     var eventHomeTimeZone = event.homeTimeZone || homeTimeZone;
     var homeDay = event.localDay
-      || timezone.dateKeyAt(eventHomeTimeZone, event.scheduledAt);
+      || timezone.dateKeyAt(eventHomeTimeZone, event.scheduledAt)
+      || timezone.dateKeyAt("UTC", event.scheduledAt);
+    if (!homeDay) return;
     var key = homeDay + ":" + event.slotId;
     var previous = byExpectedDose[key];
     var candidate = Object.assign({}, event, {
@@ -173,6 +135,7 @@ function outcomeLabel(outcome) {
 /**
  * Renders reminder outcomes grouped by local day as expandable HTML detail sections.
  * @param {Array} events - Reminder outcome events to include.
+ * @param {Array<Object>} zones - Normalised zone objects; the first supplies Home context for local-day groups and enabled zones supply Taken-time choices.
  * @return {string} HTML containing daily outcome details, or an empty-state message when no events are provided.
  */
 function dailyDetails(events, zones) {
@@ -212,7 +175,8 @@ function dailyDetails(events, zones) {
             + escapeHtml(zone.label + " — " + zoneDay + " " + zoneTime)
             + "</option>";
         }).join("");
-        takenTime = "<select class=taken-zone data-identity='" + escapeHtml(identity) + "'>"
+        takenTime = "<select class=taken-zone data-identity='" + escapeHtml(identity)
+          + "' data-initial='" + escapeHtml(selectedZone) + "'>"
           + zoneOptions + "</select>";
       }
       return "<tr><th scope=row>Pill " + (event.slotId + 1) + "</th><td>"
@@ -381,12 +345,12 @@ exports.buildReportPage = function buildReportPage(state) {
     + "<button class=close onclick=closeReport()>Close</button>"
     + "<script>function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
     + "function hideUnchecked(kind,index){var enabled=document.getElementById(kind+'-'+index+'-enabled');if(enabled&&!enabled.checked)document.getElementById(kind+'-row-'+index).hidden=true}"
-    + "function addRow(kind){var start=kind==='zone'?1:0;for(var i=start;i<4;i++){var row=document.getElementById(kind+'-row-'+i);if(row.hidden){row.hidden=false;document.getElementById(kind+'-'+i+'-enabled').checked=true;return}}alert(kind==='zone'?'Maximum four timezones including Home.':'Maximum four reminders.')}"
-    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}var zones=[];for(var z=0;z<4;z++){var label=document.getElementById('zone-'+z+'-label').value.trim().toUpperCase();if(!/^[A-Z0-9 ]{1,8}$/.test(label)){alert('Timezone labels need 1-8 letters, numbers, or spaces.');return;}zones.push({id:z,enabled:z===0||document.getElementById('zone-'+z+'-enabled').checked,timeZone:document.getElementById('zone-'+z+'-time-zone').value,label:label,textColor:parseInt(document.getElementById('zone-'+z+'-text-color').value,10),backgroundColor:parseInt(document.getElementById('zone-'+z+'-background-color').value,10)});}closeWith({action:'save_settings',display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:zones[0].textColor,backgroundColor:zones[0].backgroundColor},zones:zones,slots:slots})}"
+    + "function addRow(kind){var start=kind==='zone'?1:0;var limit=kind==='zone'?" + TIMEZONE_COUNT + ":4;for(var i=start;i<limit;i++){var row=document.getElementById(kind+'-row-'+i);if(row.hidden){row.hidden=false;document.getElementById(kind+'-'+i+'-enabled').checked=true;return}}alert(kind==='zone'?'Maximum four timezones including Home.':'Maximum four reminders.')}"
+    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}var zones=[];for(var z=0;z<" + TIMEZONE_COUNT + ";z++){var label=document.getElementById('zone-'+z+'-label').value.trim().toUpperCase();if(!/^[A-Z0-9 ]{1,8}$/.test(label)){alert('Timezone labels need 1-8 letters, numbers, or spaces.');return;}zones.push({id:z,enabled:z===0||document.getElementById('zone-'+z+'-enabled').checked,timeZone:document.getElementById('zone-'+z+'-time-zone').value,label:label,textColor:parseInt(document.getElementById('zone-'+z+'-text-color').value,10),backgroundColor:parseInt(document.getElementById('zone-'+z+'-background-color').value,10)});}closeWith({action:'save_settings',display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:zones[0].textColor,backgroundColor:zones[0].backgroundColor},zones:zones,slots:slots})}"
     + "function clearHistory(){if(confirm('Clear phone report history? This cannot be undone.'))closeWith({action:'clear_history'})}"
     + "function closeReport(){closeWith({action:'close'})}"
     + "function updateZoneLabel(index){var value=document.getElementById('zone-'+index+'-time-zone').value;var p=value.split('/');document.getElementById('zone-'+index+'-label').value=p[p.length-1].replace(/_/g,' ').toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,8)}"
-    + "function saveTakenZones(){var nodes=document.querySelectorAll('.taken-zone');var events=[];for(var i=0;i<nodes.length;i++)events.push({identity:nodes[i].getAttribute('data-identity'),timeZone:nodes[i].value});closeWith({action:'update_taken_zones',events:events})}"
+    + "function saveTakenZones(){var nodes=document.querySelectorAll('.taken-zone');var events=[];for(var i=0;i<nodes.length;i++){if(nodes[i].value!==nodes[i].getAttribute('data-initial'))events.push({identity:nodes[i].getAttribute('data-identity'),timeZone:nodes[i].value})}closeWith({action:'update_taken_zones',events:events})}"
     + "</script>"
     + "</main></body></html>";
 };
