@@ -1,8 +1,8 @@
 # Number Watch with Pill Reminders
 
-Pebble Time 2 (`emery`) watchapp displaying phone-local time or a named second
-timezone as lowercase English number words. Four retained pill reminders
-interrupt the time display when due.
+Pebble Time 2 (`emery`) watchapp displaying a named Home timezone plus up to
+three enabled travel timezones as lowercase English number words. Up to four
+pill reminders interrupt the time display when due.
 
 See [Using the app](docs/using-the-app.md) for current controls, phone
 synchronisation, and troubleshooting.
@@ -22,36 +22,46 @@ minutes one through nine as `o' one` through `o' nine`, and omits minutes at
 
 ## Watch controls
 
-- Time display: Down switches local/second timezone; Select opens the reminder
-  list. Each switch briefly shows its label; second-timezone colours remain
-  distinct.
-- Reminder list: Up/Down moves; Select edits; hold Select syncs the phone report;
-  Back returns to time.
-- Reminder editor: Up/Down chooses a field; Select changes or saves; Back cancels.
-- Reminder alert: upper-right Up acknowledges and records Taken; Back dismisses
-  without changing No response.
+- Time display: Up/Down cycles backward/forward through checked timezone labels.
+  Hold Down opens Configuration. Home is selected whenever settings change.
+- Configuration: Up/Down moves. Hold Down enters Reminders, Timezones, or Phone
+  Report. Hold Up exits to the watchface.
+- Reminder and timezone lists: Up/Down moves. Hold Down enters or shows the
+  selected item. Hold Up returns to Configuration.
+- Reminder editor: Up/Down chooses a field. Hold Down enters a field, confirms
+  its value, or saves. Hold Up cancels and returns to Reminders.
+- Reminder alert: Up records Taken; Down dismisses and leaves it Not taken.
+
+Select and Back are not app navigation controls, avoiding conflicts with their
+Pebble system roles.
 
 ## Settings
 
 Edit reminder times with the watch controls above or open Number Watch settings
 in the rePebble phone app. Phone page also controls:
 
-- four pill reminder times and enabled state
-- named second timezone, switch label, and separate text/background colours
+- up to four pill reminder times and enabled state
+- Home plus up to three checked named timezones, each with label and colours
 - time format follows the watch's 12/24-hour system setting
 - horizontal alignment: left, centre, right
 - vertical alignment: top, middle, bottom
 - font size: small, medium, large
-- local-time text and background colours
+- Home-time text and background colours
 
-Save sends complete configuration to watch atomically, then requests a fresh
-watch-to-phone report sync. Enabled reminders must remain at least two minutes
-apart. Watch starts in phone-synchronised local time. Down toggles the second
-timezone. Phone resolves its daylight-saving rules on bridge connection,
-settings save, and report sync, then sends the current offset plus next
-transition. Watch stores that transition for offline use. Reminder schedules
-remain in watch-local time. Watch persists configuration and reschedules the
-next wakeup. Taken means self-reported. Report is not medical record.
+Only checked reminders and timezones remain visible on the phone page; use the
+Add buttons at each list's bottom to enable another. Save sends complete
+configuration to watch atomically, then requests a fresh watch-to-phone report
+sync. Enabled reminders must remain at least two minutes apart. Phone resolves
+IANA daylight-saving rules for every timezone on bridge connection, settings
+save, and report sync, then sends current offsets plus next transitions.
+
+Reminder times and daily dose limits use Home calendar days. Each Home day has
+at most one outcome per enabled reminder slot, so two expected pills produce
+two Taken/Not taken rows, never a third Taken row. Scheduled and answered times
+are stored as UTC instants. The phone snapshots the Home timezone/day when it
+first receives an event. A Taken row can render its actual answer instant in
+any checked timezone, including different dates on travel or daylight-saving
+days. Taken means self-reported. Report is not a medical record.
 
 **Clear phone report** removes phone-local history. Later synchronisation ignores
 retained watch events scheduled before the clear, while accepting new events.
@@ -174,5 +184,7 @@ upstream code or assets copied.
 
 - English number words only.
 - Pebble Time 2 (`emery`) only.
-- Fixed 24-hour repeating reminder schedule; four slots.
+- Home-calendar daily reminder schedule; up to four slots.
+- Watch receives the current and next offset for offline timezone use; phone
+  contact refreshes later daylight-saving transitions.
 - Phone history retained locally for 90 days; watch retains latest 128 events.

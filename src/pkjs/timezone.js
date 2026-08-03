@@ -1,4 +1,5 @@
 var formatterCache = {};
+var TIMEZONE_COUNT = 4;
 
 var FALLBACK_TIME_ZONES = [
   "UTC",
@@ -46,6 +47,127 @@ function partNumber(parts, type) {
     if (parts[index].type === type) return parseInt(parts[index].value, 10);
   }
   return NaN;
+}
+
+function zonedParts(timeZone, timestampMs) {
+  if (typeof Intl === "undefined" || !Intl.DateTimeFormat) return null;
+  try {
+    var parts = formatterFor(timeZone).formatToParts(new Date(timestampMs));
+    var result = {
+      year: partNumber(parts, "year"),
+      month: partNumber(parts, "month"),
+      day: partNumber(parts, "day"),
+      hour: partNumber(parts, "hour"),
+      minute: partNumber(parts, "minute"),
+      second: partNumber(parts, "second"),
+    };
+    if (Object.keys(result).some(function (key) {
+      return !Number.isFinite(result[key]);
+    })) return null;
+    return result;
+  } catch (error) {
+    return null;
+  }
+}
+
+function pad2(value) {
+  return value < 10 ? "0" + value : String(value);
+}
+
+function dateKeyAt(timeZone, timestampMs) {
+  var parts = zonedParts(timeZone, timestampMs);
+  if (!parts) return null;
+  return parts.year + "-" + pad2(parts.month) + "-" + pad2(parts.day);
+}
+
+function timeLabelAt(timeZone, timestampMs) {
+  var parts = zonedParts(timeZone, timestampMs);
+  if (!parts) return null;
+  return pad2(parts.hour) + ":" + pad2(parts.minute);
+}
+
+function systemTimeZone() {
+  if (typeof Intl === "undefined" || !Intl.DateTimeFormat) return "UTC";
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch (error) {
+    return "UTC";
+  }
+}
+
+function defaultZoneSettings(index) {
+  var homeTimeZone = systemTimeZone();
+  var timeZone = index === 0 ? homeTimeZone : "UTC";
+  return {
+    id: index,
+    enabled: index === 0,
+    timeZone: timeZone,
+    label: labelForTimeZone(timeZone),
+    textColor: index === 0 ? 0 : 1,
+    backgroundColor: index === 0 ? 1 : 4,
+    offsetMinutes: 0,
+    transitionAt: 0,
+    transitionOffsetMinutes: 0,
+  };
+}
+
+function normaliseZoneSettings(value, index) {
+  var fallback = defaultZoneSettings(index);
+  var candidate = value || {};
+  return {
+    id: index,
+    enabled: index === 0 || candidate.enabled === true,
+    timeZone: typeof candidate.timeZone === "string"
+      ? candidate.timeZone
+      : fallback.timeZone,
+    label: typeof candidate.label === "string"
+      ? candidate.label
+      : fallback.label,
+    textColor: Number.isInteger(candidate.textColor)
+      ? candidate.textColor
+      : fallback.textColor,
+    backgroundColor: Number.isInteger(candidate.backgroundColor)
+      ? candidate.backgroundColor
+      : fallback.backgroundColor,
+    offsetMinutes: Number.isInteger(candidate.offsetMinutes)
+      ? candidate.offsetMinutes
+      : 0,
+    transitionAt: Number.isInteger(candidate.transitionAt)
+      ? candidate.transitionAt
+      : 0,
+    transitionOffsetMinutes: Number.isInteger(candidate.transitionOffsetMinutes)
+      ? candidate.transitionOffsetMinutes
+      : 0,
+  };
+}
+
+function normaliseZones(settings) {
+  if (
+    settings
+    && Array.isArray(settings.zones)
+    && settings.zones.length === TIMEZONE_COUNT
+  ) {
+    return settings.zones.map(function (zone, index) {
+      return normaliseZoneSettings(zone, index);
+    });
+  }
+  var zones = [];
+  for (var index = 0; index < TIMEZONE_COUNT; index += 1) {
+    zones.push(defaultZoneSettings(index));
+  }
+  if (settings && settings.alternate) {
+    zones[1] = normaliseZoneSettings(settings.alternate, 1);
+    zones[1].enabled = true;
+  }
+  if (settings && settings.display) {
+    zones[0].textColor = Number.isInteger(settings.display.textColor)
+      ? settings.display.textColor
+      : zones[0].textColor;
+    zones[0].backgroundColor = Number.isInteger(settings.display.backgroundColor)
+      ? settings.display.backgroundColor
+      : zones[0].backgroundColor;
+  }
+  return zones;
 }
 
 function offsetMinutesAt(timeZone, timestampMs) {
@@ -127,6 +249,13 @@ function supportedTimeZones() {
 }
 
 exports.labelForTimeZone = labelForTimeZone;
+exports.normaliseZoneSettings = normaliseZoneSettings;
+exports.normaliseZones = normaliseZones;
+exports.dateKeyAt = dateKeyAt;
 exports.offsetMinutesAt = offsetMinutesAt;
 exports.supportedTimeZones = supportedTimeZones;
+exports.systemTimeZone = systemTimeZone;
+exports.timeLabelAt = timeLabelAt;
 exports.timezoneSnapshot = timezoneSnapshot;
+exports.zonedParts = zonedParts;
+exports.TIMEZONE_COUNT = TIMEZONE_COUNT;

@@ -2,6 +2,19 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.8] - 2026-08-02
+
+- Add a named Home timezone plus three optional checked timezones, each with
+  its own label and colours.
+- Move watch navigation to Up/Down short and long presses so Select and Back do
+  not block entry to or exit from configuration screens.
+- Show only checked reminders and timezones in phone settings, with Add actions
+  at the bottom of both lists.
+- Limit each Home calendar day to one Taken/Not taken result per enabled pill
+  slot, and preserve UTC answer instants with selectable timezone rendering.
+- Handle Home daylight-saving gaps and repeated hours without fixed 24-hour
+  scheduling arithmetic.
+
 ## [0.2.7] - 2026-08-02
 
 - Update the default Emery app-store screenshot to show `22:23` in the large

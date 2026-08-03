@@ -11,10 +11,15 @@
 - Open report disconnected. Confirm last cached report and stale timestamp.
 - Verify report loads without network requests or external resources.
 - Verify phone report contains no pill data in console logs.
-- Open phone settings. Confirm latest watch snapshot populates all reminders,
-  displayed-time source and offset, position, size, and colours.
+- Open phone settings. Confirm latest watch snapshot shows only checked
+  reminders/timezones, with Add at the bottom of both lists.
+- Configure Home plus three optional IANA timezones. Confirm all labels,
+  checked states, offsets, next transitions, and colours round-trip.
 - Save phone settings. Confirm watch applies accepted values, then sends a fresh
   settings snapshot, retained events, and sync-complete message.
-- Choose fixed UTC+05:45. Confirm the word-time display changes by that offset,
-  12/24-hour formatting still follows the watch setting, and reminders continue
-  to fire at their configured watch-local times.
+- Configure two Home reminders. Confirm each completed Home day contains exactly
+  two Taken/Not taken rows even after retained events are resent.
+- Record Taken while travelling. Confirm its answer instant can render in each
+  checked timezone and keeps the original Home day after later Home changes.
+- Cross a 23-hour or 25-hour Home day. Confirm grouping uses Home calendar dates,
+  not elapsed 24-hour windows.

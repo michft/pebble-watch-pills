@@ -35,3 +35,24 @@ bool display_time_named_parts(
   int *hour,
   int *minute
 );
+
+/** Returns a stable YYYYMMDD key for a named-zone calendar day. */
+bool display_time_named_day_key(
+  time_t utc_time,
+  int16_t utc_offset_minutes,
+  time_t transition_at,
+  int16_t transition_offset_minutes,
+  int32_t *day_key
+);
+
+/** Finds the next real UTC instant matching a named-zone wall time. */
+bool display_time_next_named_occurrence(
+  time_t now,
+  int hour,
+  int minute,
+  int16_t utc_offset_minutes,
+  time_t transition_at,
+  int16_t transition_offset_minutes,
+  int32_t excluded_day_key,
+  time_t *occurrence
+);

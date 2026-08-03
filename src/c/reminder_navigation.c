@@ -18,16 +18,12 @@ uint8_t reminder_navigation_build_items(
   return count;
 }
 
-void reminder_navigation_select(
+void reminder_navigation_open(
   ReminderNavigation *state,
   const bool enabled[REMINDER_NAVIGATION_SLOT_COUNT]
 ) {
   if (state == NULL || enabled == NULL) return;
 
-  if (state->screen == REMINDER_NAVIGATION_TIME) {
-    state->screen = REMINDER_NAVIGATION_MAIN;
-    return;
-  }
   if (state->screen != REMINDER_NAVIGATION_MAIN) return;
 
   uint8_t items[REMINDER_NAVIGATION_SLOT_COUNT + 1];
@@ -58,7 +54,7 @@ ReminderAlertAction reminder_navigation_alert_action(
   if (button == REMINDER_ALERT_BUTTON_UP) {
     return REMINDER_ALERT_ACTION_TAKEN;
   }
-  if (button == REMINDER_ALERT_BUTTON_BACK) {
+  if (button == REMINDER_ALERT_BUTTON_DOWN) {
     return REMINDER_ALERT_ACTION_DISMISS;
   }
   return REMINDER_ALERT_ACTION_NONE;

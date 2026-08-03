@@ -3,6 +3,12 @@ var timezone = require("./timezone");
 
 var STORAGE_KEY = "pebble-pills-phone-state-v1";
 var NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+var TIMEZONE_COUNT = timezone.TIMEZONE_COUNT;
+var normaliseZoneSettings = timezone.normaliseZoneSettings;
+var normaliseZones = timezone.normaliseZones;
+
+exports.TIMEZONE_COUNT = TIMEZONE_COUNT;
+exports.normaliseZones = normaliseZones;
 
 var MessageType = {
   EVENT_BATCH: 3,
@@ -15,43 +21,6 @@ var MessageType = {
 
 var zoneRefreshTimer = null;
 var MAX_ZONE_REFRESH_DELAY_MS = 20 * 24 * 60 * 60 * 1000;
-
-function defaultAlternateSettings() {
-  return {
-    timeZone: "UTC",
-    label: "UTC",
-    textColor: 1,
-    backgroundColor: 4,
-  };
-}
-
-function normaliseAlternateSettings(value) {
-  var fallback = defaultAlternateSettings();
-  var candidate = value || {};
-  return {
-    timeZone: typeof candidate.timeZone === "string"
-      ? candidate.timeZone
-      : fallback.timeZone,
-    label: typeof candidate.label === "string"
-      ? candidate.label
-      : fallback.label,
-    textColor: Number.isInteger(candidate.textColor)
-      ? candidate.textColor
-      : fallback.textColor,
-    backgroundColor: Number.isInteger(candidate.backgroundColor)
-      ? candidate.backgroundColor
-      : fallback.backgroundColor,
-    offsetMinutes: Number.isInteger(candidate.offsetMinutes)
-      ? candidate.offsetMinutes
-      : 0,
-    transitionAt: Number.isInteger(candidate.transitionAt)
-      ? candidate.transitionAt
-      : 0,
-    transitionOffsetMinutes: Number.isInteger(candidate.transitionOffsetMinutes)
-      ? candidate.transitionOffsetMinutes
-      : 0,
-  };
-}
 
 /**
  * Creates an empty phone-side synchronisation state.
@@ -141,7 +110,7 @@ function integerInRange(value, minimum, maximum) {
   return Number.isInteger(value) && value >= minimum && value <= maximum;
 }
 
-function settingsResponseValid(response) {
+function settingsResponseValid(response, state) {
   if (
     !response
     || !response.display
@@ -152,16 +121,35 @@ function settingsResponseValid(response) {
     || !integerInRange(response.display.fontSize, 0, 2)
     || !integerInRange(response.display.textColor, 0, 9)
     || !integerInRange(response.display.backgroundColor, 0, 9)
-    || !response.alternate
-    || typeof response.alternate.timeZone !== "string"
-    || response.alternate.timeZone.length < 1
-    || response.alternate.timeZone.length > 64
-    || typeof response.alternate.label !== "string"
-    || !/^[A-Z0-9 ]{1,8}$/.test(response.alternate.label)
-    || !integerInRange(response.alternate.textColor, 0, 9)
-    || !integerInRange(response.alternate.backgroundColor, 0, 9)
+    || !Array.isArray(response.zones)
+    || response.zones.length !== TIMEZONE_COUNT
   ) {
     return false;
+  }
+  for (var zoneIndex = 0; zoneIndex < response.zones.length; zoneIndex += 1) {
+    var zone = response.zones[zoneIndex];
+    if (
+      !zone
+      || zone.id !== zoneIndex
+      || typeof zone.enabled !== "boolean"
+      || zoneIndex === 0 && !zone.enabled
+      || typeof zone.timeZone !== "string"
+      || zone.timeZone.length < 1
+      || zone.timeZone.length > 64
+      || typeof zone.label !== "string"
+      || !/^[A-Z0-9 ]{1,8}$/.test(zone.label)
+      || !integerInRange(zone.textColor, 0, 9)
+      || !integerInRange(zone.backgroundColor, 0, 9)
+    ) {
+      return false;
+    }
+    if (timezone.offsetMinutesAt(zone.timeZone, Date.now()) === null) {
+      if (state) {
+        state.warning = "Timezone " + zone.timeZone
+          + " was not saved because it could not be resolved.";
+      }
+      return false;
+    }
   }
   for (var index = 0; index < response.slots.length; index += 1) {
     var slot = response.slots[index];
@@ -188,26 +176,40 @@ function settingsResponseValid(response) {
   return true;
 }
 
-function timezoneMessage(alternate, type) {
-  var snapshot = timezone.timezoneSnapshot(alternate.timeZone, Date.now());
-  if (
-    !snapshot
-    || !integerInRange(snapshot.offsetMinutes, -12 * 60, 14 * 60)
-    || snapshot.offsetMinutes % 15 !== 0
-    || !integerInRange(snapshot.transitionOffsetMinutes, -12 * 60, 14 * 60)
-    || snapshot.transitionOffsetMinutes % 15 !== 0
-  ) {
-    return null;
+function timezoneMessage(zones, type) {
+  var message = { TYPE: type };
+  var nextTransitionAt = 0;
+  for (var index = 0; index < zones.length; index += 1) {
+    var zone = zones[index];
+    var snapshot = timezone.timezoneSnapshot(
+      zone.enabled ? zone.timeZone : "UTC",
+      Date.now()
+    );
+    if (
+      !snapshot
+      || !integerInRange(snapshot.offsetMinutes, -12 * 60, 14 * 60)
+      || snapshot.offsetMinutes % 15 !== 0
+      || !integerInRange(snapshot.transitionOffsetMinutes, -12 * 60, 14 * 60)
+      || snapshot.transitionOffsetMinutes % 15 !== 0
+    ) {
+      return null;
+    }
+    var prefix = "TZ_" + index + "_";
+    message[prefix + "ENABLED"] = zone.enabled ? 1 : 0;
+    message[prefix + "LABEL"] = zone.label;
+    message[prefix + "TEXT_COLOR"] = zone.textColor;
+    message[prefix + "BACKGROUND_COLOR"] = zone.backgroundColor;
+    message[prefix + "UTC_OFFSET_MINUTES"] = snapshot.offsetMinutes;
+    message[prefix + "TRANSITION_AT"] = snapshot.transitionAt;
+    message[prefix + "TRANSITION_OFFSET_MINUTES"] = snapshot.transitionOffsetMinutes;
+    if (
+      snapshot.transitionAt > 0
+      && (nextTransitionAt === 0 || snapshot.transitionAt < nextTransitionAt)
+    ) {
+      nextTransitionAt = snapshot.transitionAt;
+    }
   }
-  return {
-    TYPE: type,
-    ALT_TEXT_COLOR: alternate.textColor,
-    ALT_BACKGROUND_COLOR: alternate.backgroundColor,
-    ALT_TZ_LABEL: alternate.label,
-    ALT_UTC_OFFSET_MINUTES: snapshot.offsetMinutes,
-    ALT_TRANSITION_AT: snapshot.transitionAt,
-    ALT_TRANSITION_OFFSET_MINUTES: snapshot.transitionOffsetMinutes,
-  };
+  return { message: message, transitionAt: nextTransitionAt };
 }
 
 function scheduleTimezoneRefresh(snapshot) {
@@ -239,18 +241,18 @@ function scheduleTimezoneRetry() {
 }
 
 function pushTimezoneUpdate(settings, complete) {
-  var alternate = normaliseAlternateSettings(settings && settings.alternate);
-  var message = timezoneMessage(alternate, MessageType.TIMEZONE_UPDATE);
-  if (!message) {
-    console.log("Named timezone unavailable on phone");
+  var zones = normaliseZones(settings);
+  var update = timezoneMessage(zones, MessageType.TIMEZONE_UPDATE);
+  if (!update) {
+    console.log("Named timezones unavailable on phone");
     scheduleTimezoneRetry();
     if (complete) complete();
     return;
   }
   Pebble.sendAppMessage(
-    message,
+    update.message,
     function () {
-      scheduleTimezoneRefresh({ transitionAt: message.ALT_TRANSITION_AT });
+      scheduleTimezoneRefresh({ transitionAt: update.transitionAt });
       if (complete) complete();
     },
     function () {
@@ -266,11 +268,12 @@ function sendSettings(response) {
     console.log("Phone settings invalid");
     return;
   }
-  var message = timezoneMessage(response.alternate, MessageType.SETTINGS_UPDATE);
-  if (!message) {
-    console.log("Named timezone unavailable on phone");
+  var update = timezoneMessage(response.zones, MessageType.SETTINGS_UPDATE);
+  if (!update) {
+    console.log("Named timezones unavailable on phone");
     return;
   }
+  var message = update.message;
   message.H_ALIGN = response.display.horizontal;
   message.V_ALIGN = response.display.vertical;
   message.FONT_SIZE = response.display.fontSize;
@@ -286,7 +289,7 @@ function sendSettings(response) {
   Pebble.sendAppMessage(
     message,
     function () {
-      scheduleTimezoneRefresh({ transitionAt: message.ALT_TRANSITION_AT });
+      scheduleTimezoneRefresh({ transitionAt: update.transitionAt });
       requestSync();
     },
     function () { console.log("Phone settings send failed"); }
@@ -344,9 +347,23 @@ function handleEventBatch(payload) {
 
   var state = loadState();
   var installId = payload.installId;
+  var homeTimeZone = normaliseZones(state.settings)[0].timeZone;
   var byIdentity = {};
   state.events.forEach(function (event) {
-    byIdentity[event.installId + ":" + event.sequence] = event;
+    var identity = event.installId + ":" + event.sequence;
+    var previous = byIdentity[identity];
+    var stored = Object.assign({}, event);
+    stored.homeTimeZone = previous && previous.homeTimeZone
+      ? previous.homeTimeZone
+      : event.homeTimeZone || homeTimeZone;
+    stored.localDay = event.localDay
+      || timezone.dateKeyAt(stored.homeTimeZone, stored.scheduledAt)
+      || timezone.dateKeyAt("UTC", stored.scheduledAt);
+    if (!stored.localDay) return;
+    stored.takenTimeZone = previous && previous.takenTimeZone
+      ? previous.takenTimeZone
+      : event.takenTimeZone || stored.homeTimeZone;
+    byIdentity[identity] = stored;
   });
 
   payload.events.forEach(function (event) {
@@ -356,7 +373,22 @@ function handleEventBatch(payload) {
     ) {
       return;
     }
-    byIdentity[event.installId + ":" + event.sequence] = event;
+    var identity = event.installId + ":" + event.sequence;
+    var previous = byIdentity[identity];
+    var stored = Object.assign({}, event);
+    stored.homeTimeZone = previous && previous.homeTimeZone
+      ? previous.homeTimeZone
+      : homeTimeZone;
+    stored.localDay = previous && previous.localDay
+      ? previous.localDay
+      : timezone.dateKeyAt(stored.homeTimeZone, stored.scheduledAt)
+        || event.localDay
+        || timezone.dateKeyAt("UTC", stored.scheduledAt);
+    if (!stored.localDay) return;
+    stored.takenTimeZone = previous && previous.takenTimeZone
+      ? previous.takenTimeZone
+      : stored.homeTimeZone;
+    byIdentity[identity] = stored;
   });
 
   state.events = Object.keys(byIdentity).map(function (identity) {
@@ -388,15 +420,16 @@ function handleSettings(payload) {
     return;
   }
   var state = loadState();
-  var priorAlternate = normaliseAlternateSettings(
-    state.settings && state.settings.alternate
-  );
-  var watchAlternate = payload.alternate
-    ? normaliseAlternateSettings(payload.alternate)
-    : priorAlternate;
-  watchAlternate.timeZone = priorAlternate.timeZone;
+  var priorZones = normaliseZones(state.settings);
+  var watchZones = Array.isArray(payload.zones) && payload.zones.length === TIMEZONE_COUNT
+    ? payload.zones
+    : priorZones;
+  payload.zones = watchZones.map(function (zone, index) {
+    var normalised = normaliseZoneSettings(zone, index);
+    normalised.timeZone = priorZones[index].timeZone;
+    return normalised;
+  });
   state.settings = payload;
-  state.settings.alternate = watchAlternate;
   state.droppedEvents = Math.max(
     state.droppedEvents,
     Number(payload.droppedEvents) || 0
@@ -462,8 +495,12 @@ Pebble.addEventListener("webviewclosed", function (event) {
       state.warning = null;
       state.clearedBefore = Date.now();
       saveState(state);
-    } else if (response.action === "save_settings" && settingsResponseValid(response)) {
+    } else if (response.action === "save_settings") {
       var settingsState = loadState();
+      if (!settingsResponseValid(response, settingsState)) {
+        saveState(settingsState);
+        return;
+      }
       var prior = settingsState.settings || {};
       settingsState.settings = {
         installId: prior.installId || null,
@@ -471,11 +508,32 @@ Pebble.addEventListener("webviewclosed", function (event) {
         droppedEvents: prior.droppedEvents || 0,
         hour12: Boolean(prior.hour12),
         display: response.display,
-        alternate: response.alternate,
+        zones: response.zones,
         slots: response.slots,
       };
+      settingsState.warning = null;
       saveState(settingsState);
       sendSettings(response);
+    } else if (response.action === "update_taken_zones" && Array.isArray(response.events)) {
+      var historyState = loadState();
+      var allowedZones = normaliseZones(historyState.settings)
+        .filter(function (zone) { return zone.enabled; })
+        .map(function (zone) { return zone.timeZone; });
+      var selections = {};
+      response.events.forEach(function (selection) {
+        if (
+          selection
+          && typeof selection.identity === "string"
+          && allowedZones.indexOf(selection.timeZone) !== -1
+        ) {
+          selections[selection.identity] = selection.timeZone;
+        }
+      });
+      historyState.events.forEach(function (storedEvent) {
+        var identity = storedEvent.installId + ":" + storedEvent.sequence;
+        if (selections[identity]) storedEvent.takenTimeZone = selections[identity];
+      });
+      saveState(historyState);
     }
   } catch (error) {
     console.log("Report action ignored");

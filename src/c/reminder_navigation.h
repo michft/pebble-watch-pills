@@ -7,7 +7,6 @@
 #define REMINDER_NAVIGATION_ADD_ITEM REMINDER_NAVIGATION_SLOT_COUNT
 
 typedef enum {
-  REMINDER_NAVIGATION_TIME,
   REMINDER_NAVIGATION_MAIN,
   REMINDER_NAVIGATION_EDIT
 } ReminderNavigationScreen;
@@ -22,9 +21,7 @@ typedef struct {
 
 typedef enum {
   REMINDER_ALERT_BUTTON_UP,
-  REMINDER_ALERT_BUTTON_SELECT,
-  REMINDER_ALERT_BUTTON_DOWN,
-  REMINDER_ALERT_BUTTON_BACK
+  REMINDER_ALERT_BUTTON_DOWN
 } ReminderAlertButton;
 
 typedef enum {
@@ -38,7 +35,7 @@ uint8_t reminder_navigation_build_items(
   uint8_t items[REMINDER_NAVIGATION_SLOT_COUNT + 1]
 );
 
-void reminder_navigation_select(
+void reminder_navigation_open(
   ReminderNavigation *state,
   const bool enabled[REMINDER_NAVIGATION_SLOT_COUNT]
 );
