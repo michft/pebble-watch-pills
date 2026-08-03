@@ -46,7 +46,9 @@ test("cleared phone history stays clear when retained watch events resync", () =
   const indexPath = require.resolve("../src/pkjs/index.js");
   delete require.cache[indexPath];
   try {
-    require(indexPath);
+    const bridge = require(indexPath);
+    assert.equal(bridge.TIMEZONE_COUNT, 4);
+    assert.equal(bridge.normaliseZones(null).length, bridge.TIMEZONE_COUNT);
     handlers.webviewclosed({
       response: encodeURIComponent(JSON.stringify({ action: "clear_history" })),
     });
@@ -236,6 +238,54 @@ test("saving phone settings requests a full watch sync after delivery", () => {
     sent[0].success();
     assert.equal(sent.length, 2);
     assert.equal(sent[1].message.TYPE, 7);
+  } finally {
+    delete require.cache[indexPath];
+    delete global.localStorage;
+    delete global.Pebble;
+  }
+});
+
+test("rejects an unresolvable saved timezone and stores a report warning", () => {
+  const handlers = {};
+  const sent = [];
+  let stored = null;
+
+  global.localStorage = {
+    getItem() { return stored; },
+    setItem(key, value) { if (key === STORAGE_KEY) stored = value; },
+  };
+  global.Pebble = {
+    addEventListener(name, handler) { handlers[name] = handler; },
+    sendAppMessage(message) { sent.push(message); },
+  };
+
+  const indexPath = require.resolve("../src/pkjs/index.js");
+  delete require.cache[indexPath];
+  try {
+    require(indexPath);
+    handlers.webviewclosed({
+      response: encodeURIComponent(JSON.stringify({
+        action: "save_settings",
+        display: { horizontal: 1, vertical: 1, fontSize: 2, textColor: 0, backgroundColor: 1 },
+        zones: [
+          { id: 0, enabled: true, timeZone: "Not/A_Zone", label: "HOME", textColor: 0, backgroundColor: 1 },
+          { id: 1, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 4 },
+          { id: 2, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 4 },
+          { id: 3, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 4 },
+        ],
+        slots: [
+          { id: 0, hour: 8, minute: 0, enabled: true },
+          { id: 1, hour: 12, minute: 0, enabled: false },
+          { id: 2, hour: 18, minute: 0, enabled: false },
+          { id: 3, hour: 22, minute: 0, enabled: false },
+        ],
+      })),
+    });
+
+    const state = JSON.parse(stored);
+    assert.equal(state.settings, null);
+    assert.match(state.warning, /timezone.*Not\/A_Zone.*not saved/i);
+    assert.deepEqual(sent, []);
   } finally {
     delete require.cache[indexPath];
     delete global.localStorage;

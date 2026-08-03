@@ -8,8 +8,8 @@ Date: 2026-08-01
 
 ## Product
 
-Watchapp starts in phone-synchronised local time. Down toggles a configured
-named second timezone. Existing four-slot pill reminder, outcome history,
+Watchapp starts in the named Home timezone. Up/Down cycles Home plus up to
+three checked named timezones. Existing four-slot pill reminder, outcome history,
 persistence, wakeups, and phone report remain intact.
 Reminder alert interrupts watchface. Pebble OS reserves buttons for true
 watchfaces, so prior button outcome flow cannot be used unchanged.
@@ -29,9 +29,9 @@ watchfaces, so prior button outcome flow cannot be used unchanged.
 ## Display rules
 
 - Follow watch 12/24-hour preference.
-- Default to local time on launch; Down toggles a named second timezone.
-- Briefly show `LOCAL` or configured zone label after switching.
-- Keep a distinct configurable colour pair for second-timezone mode.
+- Default to Home on launch; Up/Down cycles checked timezone labels.
+- Briefly show the configured zone label after switching.
+- Keep a distinct configurable colour pair for every timezone.
 - Resolve named-zone offset and next daylight-saving transition on phone;
   refresh on connection/save/sync and retain next transition on watch.
 - Update each minute.
@@ -42,7 +42,7 @@ watchfaces, so prior button outcome flow cannot be used unchanged.
   - `12:27` → `twelve / twenty / seven`
   - `01:06` → `one / o' / six`
 - Phone config controls left/centre/right, top/middle/bottom, three font sizes,
-  local colours, named second timezone, switch label, and second-zone colours.
+  and Home plus three optional named timezone labels and colours.
 
 ## Reminder rules
 
@@ -52,7 +52,7 @@ watchfaces, so prior button outcome flow cannot be used unchanged.
 - Accepted changes persist and reschedule wakeup immediately.
 - Alert vibrates for five-minute window.
 - Taken and No response state model and phone-local 90-day report retained.
-- Upper-right Up acknowledges an active alert and records Taken. Back dismisses
+- Upper-right Up acknowledges an active alert and records Taken. Down dismisses
   without changing No response.
 
 ## Architecture
@@ -64,7 +64,7 @@ phone settings/report
   -> validated display + four reminder slots
   -> persisted watch state + wakeup reschedule
 
-Down        -> local/second-zone toggle -> label -> word time
+Up/Down     -> checked-zone cycle -> label -> word time
 minute tick -> time_words.c -> watchface TextLayer
 wakeup      -> reminder alert -> Up acknowledgement records Taken
 ```

@@ -3,7 +3,12 @@ var timezone = require("./timezone");
 
 var STORAGE_KEY = "pebble-pills-phone-state-v1";
 var NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-var TIMEZONE_COUNT = 4;
+var TIMEZONE_COUNT = timezone.TIMEZONE_COUNT;
+var normaliseZoneSettings = timezone.normaliseZoneSettings;
+var normaliseZones = timezone.normaliseZones;
+
+exports.TIMEZONE_COUNT = TIMEZONE_COUNT;
+exports.normaliseZones = normaliseZones;
 
 var MessageType = {
   EVENT_BATCH: 3,
@@ -16,78 +21,6 @@ var MessageType = {
 
 var zoneRefreshTimer = null;
 var MAX_ZONE_REFRESH_DELAY_MS = 20 * 24 * 60 * 60 * 1000;
-
-function defaultZoneSettings(index) {
-  var homeTimeZone = timezone.systemTimeZone();
-  var defaults = [homeTimeZone, "UTC", "UTC", "UTC"];
-  var timeZone = defaults[index] || "UTC";
-  return {
-    id: index,
-    enabled: index === 0,
-    timeZone: timeZone,
-    label: timezone.labelForTimeZone(timeZone),
-    textColor: index === 0 ? 0 : 1,
-    backgroundColor: index === 0 ? 1 : 4,
-    offsetMinutes: 0,
-    transitionAt: 0,
-    transitionOffsetMinutes: 0,
-  };
-}
-
-function normaliseZoneSettings(value, index) {
-  var fallback = defaultZoneSettings(index);
-  var candidate = value || {};
-  return {
-    id: index,
-    enabled: index === 0 || candidate.enabled === true,
-    timeZone: typeof candidate.timeZone === "string"
-      ? candidate.timeZone
-      : fallback.timeZone,
-    label: typeof candidate.label === "string"
-      ? candidate.label
-      : fallback.label,
-    textColor: Number.isInteger(candidate.textColor)
-      ? candidate.textColor
-      : fallback.textColor,
-    backgroundColor: Number.isInteger(candidate.backgroundColor)
-      ? candidate.backgroundColor
-      : fallback.backgroundColor,
-    offsetMinutes: Number.isInteger(candidate.offsetMinutes)
-      ? candidate.offsetMinutes
-      : 0,
-    transitionAt: Number.isInteger(candidate.transitionAt)
-      ? candidate.transitionAt
-      : 0,
-    transitionOffsetMinutes: Number.isInteger(candidate.transitionOffsetMinutes)
-      ? candidate.transitionOffsetMinutes
-      : 0,
-  };
-}
-
-function normaliseZones(settings) {
-  if (settings && Array.isArray(settings.zones) && settings.zones.length === TIMEZONE_COUNT) {
-    return settings.zones.map(function (zone, index) {
-      return normaliseZoneSettings(zone, index);
-    });
-  }
-  var zones = [];
-  for (var index = 0; index < TIMEZONE_COUNT; index += 1) {
-    zones.push(defaultZoneSettings(index));
-  }
-  if (settings && settings.alternate) {
-    zones[1] = normaliseZoneSettings(settings.alternate, 1);
-    zones[1].enabled = true;
-  }
-  if (settings && settings.display) {
-    zones[0].textColor = Number.isInteger(settings.display.textColor)
-      ? settings.display.textColor
-      : zones[0].textColor;
-    zones[0].backgroundColor = Number.isInteger(settings.display.backgroundColor)
-      ? settings.display.backgroundColor
-      : zones[0].backgroundColor;
-  }
-  return zones;
-}
 
 /**
  * Creates an empty phone-side synchronisation state.
@@ -177,7 +110,7 @@ function integerInRange(value, minimum, maximum) {
   return Number.isInteger(value) && value >= minimum && value <= maximum;
 }
 
-function settingsResponseValid(response) {
+function settingsResponseValid(response, state) {
   if (
     !response
     || !response.display
@@ -208,6 +141,13 @@ function settingsResponseValid(response) {
       || !integerInRange(zone.textColor, 0, 9)
       || !integerInRange(zone.backgroundColor, 0, 9)
     ) {
+      return false;
+    }
+    if (timezone.offsetMinutesAt(zone.timeZone, Date.now()) === null) {
+      if (state) {
+        state.warning = "Timezone " + zone.timeZone
+          + " was not saved because it could not be resolved.";
+      }
       return false;
     }
   }
@@ -417,7 +357,9 @@ function handleEventBatch(payload) {
       ? previous.homeTimeZone
       : event.homeTimeZone || homeTimeZone;
     stored.localDay = event.localDay
-      || timezone.dateKeyAt(stored.homeTimeZone, stored.scheduledAt);
+      || timezone.dateKeyAt(stored.homeTimeZone, stored.scheduledAt)
+      || timezone.dateKeyAt("UTC", stored.scheduledAt);
+    if (!stored.localDay) return;
     stored.takenTimeZone = previous && previous.takenTimeZone
       ? previous.takenTimeZone
       : event.takenTimeZone || stored.homeTimeZone;
@@ -439,7 +381,10 @@ function handleEventBatch(payload) {
       : homeTimeZone;
     stored.localDay = previous && previous.localDay
       ? previous.localDay
-      : timezone.dateKeyAt(stored.homeTimeZone, stored.scheduledAt) || event.localDay;
+      : timezone.dateKeyAt(stored.homeTimeZone, stored.scheduledAt)
+        || event.localDay
+        || timezone.dateKeyAt("UTC", stored.scheduledAt);
+    if (!stored.localDay) return;
     stored.takenTimeZone = previous && previous.takenTimeZone
       ? previous.takenTimeZone
       : stored.homeTimeZone;
@@ -550,8 +495,12 @@ Pebble.addEventListener("webviewclosed", function (event) {
       state.warning = null;
       state.clearedBefore = Date.now();
       saveState(state);
-    } else if (response.action === "save_settings" && settingsResponseValid(response)) {
+    } else if (response.action === "save_settings") {
       var settingsState = loadState();
+      if (!settingsResponseValid(response, settingsState)) {
+        saveState(settingsState);
+        return;
+      }
       var prior = settingsState.settings || {};
       settingsState.settings = {
         installId: prior.installId || null,
@@ -562,6 +511,7 @@ Pebble.addEventListener("webviewclosed", function (event) {
         zones: response.zones,
         slots: response.slots,
       };
+      settingsState.warning = null;
       saveState(settingsState);
       sendSettings(response);
     } else if (response.action === "update_taken_zones" && Array.isArray(response.events)) {

@@ -70,9 +70,14 @@ test("renders checked-only settings and selectable taken timezone", () => {
   assert.match(html, /Phone refreshes daylight-saving data/);
   assert.match(html, /id=slot-0-time type=time required value='08:00'/);
   assert.match(html, /class=taken-zone/);
+  assert.match(html, /data-initial='Europe\/London'/);
   assert.match(html, /value='Europe\/London' selected>LONDON —/);
   assert.doesNotMatch(html, /value='America\/New_York' selected/);
   assert.match(html, /Save taken timezones/);
+  assert.match(
+    html,
+    /nodes\[i\]\.value!==nodes\[i\]\.getAttribute\('data-initial'\)/,
+  );
   assert.match(html, /Enabled reminders need at least a two minute gap/);
 });
 
@@ -105,6 +110,36 @@ test("deduplicates one expected pill per Home day and slot", () => {
   assert.equal(pillOneRows.length, 1);
   assert.equal(pillTwoRows.length, 1);
   assert.match(html, /1\/2 taken/);
+});
+
+test("falls back to a UTC day when an event Home zone cannot be resolved", () => {
+  const now = Date.now();
+  const html = buildReportPage({
+    events: [{
+      installId: "watch",
+      sequence: 4,
+      slotId: 0,
+      scheduledAt: now,
+      localDay: null,
+      homeTimeZone: "Not/A_Zone",
+      outcome: "no_response",
+      answeredAt: null,
+    }],
+    settings: {
+      zones: zones(),
+      slots: [
+        { id: 0, hour: 8, minute: 0, enabled: true },
+        { id: 1, hour: 12, minute: 0, enabled: false },
+        { id: 2, hour: 18, minute: 0, enabled: false },
+        { id: 3, hour: 22, minute: 0, enabled: false },
+      ],
+    },
+    lastSyncAt: now,
+    droppedEvents: 0,
+    warning: null,
+  });
+
+  assert.match(html, /<th scope=row>Pill 1<\/th>/);
 });
 
 test("falls back to Home plus three hidden timezone slots", () => {

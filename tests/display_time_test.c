@@ -81,4 +81,16 @@ int main(void) {
     &occurrence
   ));
   assert(occurrence == 25 * 60 * 60 + 30 * 60);
+
+  assert(display_time_next_named_occurrence(
+    10 * 60 * 60,
+    0,
+    30,
+    13 * 60,
+    11 * 60 * 60,
+    14 * 60,
+    0,
+    &occurrence
+  ));
+  assert(occurrence == 11 * 60 * 60);
 }
