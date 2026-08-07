@@ -17,7 +17,7 @@ Select and Back are intentionally unused for app navigation.
 1. Open Number Watch settings in the rePebble phone app.
 2. Configure **Home** with a named IANA timezone and label.
 3. Use **+ Add timezone** to enable up to three more named timezones.
-4. Choose a label and text/background colours for each, then save.
+4. Choose a label and one of 20 vivid colour schemes for each, then save.
 5. On the watchface, press Up for the previous checked timezone or Down for the
    next. Each change briefly shows that timezone's label.
 
@@ -30,6 +30,10 @@ next transition when its bridge connects, settings are saved, or a report sync
 occurs. The watch stores that transition, so one upcoming daylight-saving
 change works while disconnected. Later phone contact refreshes the next one.
 Reminder schedules follow the named Home calendar timezone.
+
+The phone settings/report page has its own **Auto**, **Light**, and **Dark**
+appearance setting. Auto follows the phone. Light uses black on white; Dark
+uses white on black. This does not change the watch colour scheme.
 
 ## Acknowledge a reminder
 

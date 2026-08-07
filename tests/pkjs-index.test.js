@@ -199,18 +199,19 @@ test("saving phone settings requests a full watch sync after delivery", () => {
     handlers.webviewclosed({
       response: encodeURIComponent(JSON.stringify({
         action: "save_settings",
+        appearance: "dark",
         display: {
           horizontal: 1,
           vertical: 1,
           fontSize: 2,
-          textColor: 0,
-          backgroundColor: 1,
+          textColor: 12,
+          backgroundColor: 19,
         },
         zones: [
-          { id: 0, enabled: true, timeZone: "Australia/Sydney", label: "SYDNEY", textColor: 0, backgroundColor: 1 },
-          { id: 1, enabled: true, timeZone: "Europe/London", label: "LONDON", textColor: 1, backgroundColor: 4 },
-          { id: 2, enabled: true, timeZone: "Asia/Tokyo", label: "TOKYO", textColor: 1, backgroundColor: 4 },
-          { id: 3, enabled: false, timeZone: "America/New_York", label: "NEW YORK", textColor: 1, backgroundColor: 4 },
+          { id: 0, enabled: true, timeZone: "Australia/Sydney", label: "SYDNEY", textColor: 12, backgroundColor: 19 },
+          { id: 1, enabled: true, timeZone: "Europe/London", label: "LONDON", textColor: 1, backgroundColor: 10 },
+          { id: 2, enabled: true, timeZone: "Asia/Tokyo", label: "TOKYO", textColor: 1, backgroundColor: 13 },
+          { id: 3, enabled: false, timeZone: "America/New_York", label: "NEW YORK", textColor: 1, backgroundColor: 17 },
         ],
         slots: [
           { id: 0, hour: 8, minute: 0, enabled: true },
@@ -225,6 +226,8 @@ test("saving phone settings requests a full watch sync after delivery", () => {
     assert.equal(sent[0].message.TYPE, 8);
     assert.equal(sent[0].message.TZ_0_ENABLED, 1);
     assert.equal(sent[0].message.TZ_0_LABEL, "SYDNEY");
+    assert.equal(sent[0].message.TZ_0_TEXT_COLOR, 12);
+    assert.equal(sent[0].message.TZ_0_BACKGROUND_COLOR, 19);
     assert.equal(sent[0].message.TZ_1_LABEL, "LONDON");
     assert.equal(sent[0].message.TZ_2_LABEL, "TOKYO");
     assert.equal(sent[0].message.TZ_3_ENABLED, 0);
@@ -235,6 +238,7 @@ test("saving phone settings requests a full watch sync after delivery", () => {
       sent[0].message.TZ_0_TRANSITION_OFFSET_MINUTES,
       zone.transitionOffsetMinutes,
     );
+    assert.equal(JSON.parse(stored).appearance, "dark");
     sent[0].success();
     assert.equal(sent.length, 2);
     assert.equal(sent[1].message.TYPE, 7);
@@ -266,6 +270,7 @@ test("rejects an unresolvable saved timezone and stores a report warning", () =>
     handlers.webviewclosed({
       response: encodeURIComponent(JSON.stringify({
         action: "save_settings",
+        appearance: "auto",
         display: { horizontal: 1, vertical: 1, fontSize: 2, textColor: 0, backgroundColor: 1 },
         zones: [
           { id: 0, enabled: true, timeZone: "Not/A_Zone", label: "HOME", textColor: 0, backgroundColor: 1 },

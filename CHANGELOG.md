@@ -2,6 +2,15 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.9] - 2026-08-07
+
+- Replace separate watch text/background colour choices with 20 vivid,
+  recommended schemes and phone-side previews.
+- Add Auto, Light, and Dark appearance modes for the phone settings/report page,
+  independent from watch colours.
+- Keep scheme colours consistent between phone previews and the Emery watch,
+  including Vivid Violet for `#aa00ff`.
+
 ## [0.2.8] - 2026-08-02
 
 - Add a named Home timezone plus three optional checked timezones, each with
