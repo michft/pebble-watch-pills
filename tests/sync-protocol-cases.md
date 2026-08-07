@@ -13,8 +13,11 @@
 - Verify phone report contains no pill data in console logs.
 - Open phone settings. Confirm latest watch snapshot shows only checked
   reminders/timezones, with Add at the bottom of both lists.
-- Configure Home plus three optional IANA timezones. Confirm all labels,
-  checked states, offsets, next transitions, and colours round-trip.
+- Configure Home plus three optional IANA timezones. Choose different
+  recommended colour schemes. Confirm all labels, checked states, offsets,
+  next transitions, and scheme colours round-trip.
+- Set phone appearance to Auto, Light, and Dark. Confirm Auto follows the phone,
+  Light is black on white, Dark is white on black, and watch colours do not change.
 - Save phone settings. Confirm watch applies accepted values, then sends a fresh
   settings snapshot, retained events, and sync-complete message.
 - Configure two Home reminders. Confirm each completed Home day contains exactly

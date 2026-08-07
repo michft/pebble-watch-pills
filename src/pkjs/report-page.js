@@ -1,4 +1,5 @@
 var timezone = require("./timezone");
+var colorSchemes = require("./color-schemes");
 var TIMEZONE_COUNT = timezone.TIMEZONE_COUNT;
 var normaliseZones = timezone.normaliseZones;
 
@@ -193,9 +194,10 @@ function dailyDetails(events, zones) {
 /**
  * Builds an HTML card displaying the current reminder settings.
  * @param {Object} settings - The settings snapshot containing reminder slots and hour-format preferences.
+ * @param {string} appearance - The phone report appearance mode.
  * @return {string} The rendered settings card HTML.
  */
-function settingsSection(settings) {
+function settingsSection(settings, appearance) {
   var fallbackSlots = [8, 12, 18, 22].map(function (hour, id) {
     return { id: id, hour: hour, minute: 0, enabled: true };
   });
@@ -233,11 +235,25 @@ function settingsSection(settings) {
       + "-enabled type=checkbox" + (slot.enabled ? " checked" : "")
       + " onchange=hideUnchecked('slot'," + index + ")> Enabled</label></div>";
   }).join("");
-  var colors = [
-    [0, "White"], [1, "Black"], [2, "Red"], [3, "Orange"],
-    [4, "Yellow"], [5, "Green"], [6, "Cyan"], [7, "Blue"],
-    [8, "Purple"], [9, "Magenta"],
-  ];
+  function schemeOptions(zone) {
+    var currentScheme = colorSchemes.findScheme(zone.textColor, zone.backgroundColor);
+    var currentOption = "";
+    if (!currentScheme) {
+      var currentText = colorSchemes.colorForId(zone.textColor);
+      var currentBackground = colorSchemes.colorForId(zone.backgroundColor);
+      currentOption = "<option value='" + zone.textColor + "," + zone.backgroundColor
+        + "' data-text='" + currentText.css + "' data-background='"
+        + currentBackground.css + "' selected>Current colours</option>";
+    }
+    return currentOption + colorSchemes.SCHEMES.map(function (scheme) {
+      var text = colorSchemes.colorForId(scheme.textColor);
+      var background = colorSchemes.colorForId(scheme.backgroundColor);
+      return "<option value='" + scheme.textColor + "," + scheme.backgroundColor
+        + "' data-text='" + text.css + "' data-background='" + background.css + "'"
+        + (currentScheme && scheme.id === currentScheme.id ? " selected" : "") + ">"
+        + escapeHtml(scheme.name) + "</option>";
+    }).join("");
+  }
   var zoneRows = zones.map(function (zone, index) {
     var enabledControl = index === 0
       ? "<input id=zone-0-enabled type=hidden value=1>"
@@ -252,18 +268,22 @@ function settingsSection(settings) {
       + escapeHtml(zone.timeZone) + "' onchange=updateZoneLabel(" + index
       + ")><label for=zone-" + index + "-label>Label</label>"
       + "<input id=zone-" + index + "-label type=text maxlength=8 pattern='[A-Za-z0-9 ]{1,8}' value='"
-      + escapeHtml(zone.label) + "'><label for=zone-" + index + "-text-color>Text colour</label>"
-      + "<select id=zone-" + index + "-text-color>" + options(colors, zone.textColor) + "</select>"
-      + "<label for=zone-" + index + "-background-color>Background colour</label>"
-      + "<select id=zone-" + index + "-background-color>" + options(colors, zone.backgroundColor)
-      + "</select></div>";
+      + escapeHtml(zone.label) + "'><label for=zone-" + index + "-scheme>Colour scheme</label>"
+      + "<select id=zone-" + index + "-scheme onchange=updateSchemePreview(" + index + ")>"
+      + schemeOptions(zone) + "</select><div class=scheme-preview id=zone-" + index
+      + "-scheme-preview aria-hidden=true>12:34</div></div>";
   }).join("");
-  return "<section class=card><h2>Watch settings</h2>"
+  return "<section class=card><h2>Phone appearance</h2>"
+    + "<p class=muted>This changes this phone page only, not the watch colours.</p>"
+    + "<p class=muted>Use Save settings below to keep this choice.</p>"
+    + "<label for=appearance>Mode</label><select id=appearance onchange=applyAppearance(this.value)>"
+    + options([["auto", "Auto — follow phone"], ["light", "Light — black on white"], ["dark", "Dark — white on black"]], appearance)
+    + "</select></section><section class=card><h2>Watch settings</h2>"
     + "<p class=muted>Saved settings transfer to watch, then refresh this report.</p>"
     + "<p class=muted>Time format follows the watch's 12/24-hour system setting.</p>"
     + "<fieldset><legend>Reminders</legend>" + reminderRows
     + "<button type=button onclick=addRow('slot')>+ Add reminder</button></fieldset>"
-    + "<fieldset><legend>Timezones</legend>"
+    + "<fieldset><legend>Timezones and colour schemes</legend>"
     + "<p class=muted>Home is default. Up/Down cycles only displayed timezone labels.</p>"
     + zoneRows + timeZoneDatalist + "<button type=button onclick=addRow('zone')>+ Add timezone</button>"
     + "<p class=muted>Phone refreshes daylight-saving data whenever bridge connects. "
@@ -279,6 +299,9 @@ function settingsSection(settings) {
 }
 
 exports.buildReportPage = function buildReportPage(state) {
+  var appearance = ["auto", "light", "dark"].indexOf(state.appearance) >= 0
+    ? state.appearance
+    : "auto";
   var now = Date.now();
   var zones = normaliseZones(state.settings);
   var reportEvents = expectedEvents(state.events, zones[0].timeZone);
@@ -315,28 +338,31 @@ exports.buildReportPage = function buildReportPage(state) {
     warning += "<p class=warning>" + escapeHtml(state.warning) + "</p>";
   }
 
-  return "<!doctype html><html lang=en><head><meta charset=utf-8>"
+  return "<!doctype html><html lang=en data-appearance='" + appearance + "'><head><meta charset=utf-8>"
     + "<meta name=viewport content='width=device-width,initial-scale=1'>"
     + "<title>Pill Reminder report</title><style>"
-    + "body{margin:0;background:#f3f6fa;color:#172033;font:16px -apple-system,BlinkMacSystemFont,sans-serif}"
+    + ":root{color-scheme:light;--page:#fff;--text:#000;--muted:#4d5968;--sync:#34445a;--card:#fff;--border:#c9d2dd;--row:#dfe5ec;--field:#fff;--field-text:#000;--close:#dce8f4;--close-text:#172033}"
+    + "html[data-appearance=dark]{color-scheme:dark;--page:#000;--text:#fff;--muted:#c4ccd6;--sync:#d4dbe4;--card:#111;--border:#4d5661;--row:#363d46;--field:#1c1c1e;--field-text:#fff;--close:#30363d;--close-text:#fff}"
+    + "@media(prefers-color-scheme:dark){html[data-appearance=auto]{color-scheme:dark;--page:#000;--text:#fff;--muted:#c4ccd6;--sync:#d4dbe4;--card:#111;--border:#4d5661;--row:#363d46;--field:#1c1c1e;--field-text:#fff;--close:#30363d;--close-text:#fff}}"
+    + "body{margin:0;background:var(--page);color:var(--text);font:16px -apple-system,BlinkMacSystemFont,sans-serif}"
     + "main{max-width:680px;margin:auto;padding:18px}h1{font-size:28px;margin:0 0 4px}"
-    + "h2{font-size:19px;margin:0 0 10px}.muted{color:#5d6b7d}.sync{margin-top:0;color:#45566d}"
-    + ".card,details{background:#fff;border:1px solid #d8e0e9;border-radius:12px;padding:15px;margin:12px 0}"
-    + ".percentage{font-size:34px;font-weight:700;color:#1e6b91}.warning{background:#fff3cd;border-radius:8px;padding:10px}"
-    + "table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 4px;border-bottom:1px solid #e7ecf2;vertical-align:top}"
-    + "summary{cursor:pointer}.empty{padding:15px;background:#fff;border-radius:12px}"
+    + "h2{font-size:19px;margin:0 0 10px}.muted{color:var(--muted)}.sync{margin-top:0;color:var(--sync)}"
+    + ".card,details{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:15px;margin:12px 0}"
+    + ".percentage{font-size:34px;font-weight:700;color:#1e6b91}.warning{background:#fff3cd;color:#3d3100;border-radius:8px;padding:10px}"
+    + "table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 4px;border-bottom:1px solid var(--row);vertical-align:top}"
+    + "summary{cursor:pointer}.empty{padding:15px;background:var(--card);border-radius:12px}"
     + "fieldset{border:0;padding:0;margin:18px 0}legend{font-weight:700;margin-bottom:8px}"
-    + "label{display:block;font-weight:600;margin:10px 0 5px}select,input[type=time],input[type=text]{box-sizing:border-box;width:100%;font-size:17px;padding:10px;border:1px solid #aab6c4;border-radius:8px;background:#fff}"
-    + ".reminder{display:grid;grid-template-columns:1fr 1.2fr;gap:4px 12px;align-items:end;margin:10px 0}.reminder label{margin:0}.toggle{font-weight:400}input[type=checkbox]{width:auto}.timezone{border-top:1px solid #e7ecf2;padding-top:10px;margin-top:12px}.timezone h3{margin:0}[hidden]{display:none!important}.taken-zone{min-width:180px}"
+    + "label{display:block;font-weight:600;margin:10px 0 5px}select,input[type=time],input[type=text]{box-sizing:border-box;width:100%;font-size:17px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--field);color:var(--field-text)}"
+    + ".reminder{display:grid;grid-template-columns:1fr 1.2fr;gap:4px 12px;align-items:end;margin:10px 0}.reminder label{margin:0}.toggle{font-weight:400}input[type=checkbox]{width:auto}.timezone{border-top:1px solid var(--row);padding-top:10px;margin-top:12px}.timezone h3{margin:0}[hidden]{display:none!important}.taken-zone{min-width:180px}.scheme-preview{margin-top:8px;padding:14px;border:1px solid var(--border);border-radius:8px;text-align:center;font-size:26px;font-weight:700}"
     + "button{width:100%;padding:13px;margin:8px 0;border:0;border-radius:10px;font-size:17px;font-weight:600}"
-    + ".save{background:#1e6b91;color:#fff}.danger{background:#b42318;color:#fff}.close{background:#dce8f4;color:#172033}"
+    + ".save{background:#1e6b91;color:#fff}.danger{background:#b42318;color:#fff}.close{background:var(--close);color:var(--close-text)}"
     + "</style></head><body><main><h1>Pill Reminder</h1>"
     + "<p class=sync>Last synced: " + escapeHtml(lastSync) + "</p>"
     + warning
     + summaryCard("Today", countOutcomes(todayEvents))
     + summaryCard("Last 7 days", countOutcomes(sevenDayEvents))
     + summaryCard("Last 30 days", countOutcomes(thirtyDayEvents))
-    + settingsSection(state.settings)
+    + settingsSection(state.settings, appearance)
     + "<section><h2>Taken list</h2>" + dailyDetails(thirtyDayEvents, zones)
     + "<button type=button onclick=saveTakenZones()>Save taken timezones</button></section>"
     + "<p class=muted>Taken means self-reported. Not taken means no Taken response; it does not prove a missed dose. "
@@ -344,13 +370,16 @@ exports.buildReportPage = function buildReportPage(state) {
     + "<button class=danger onclick=clearHistory()>Clear phone report</button>"
     + "<button class=close onclick=closeReport()>Close</button>"
     + "<script>function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
+    + "function applyAppearance(value){document.documentElement.setAttribute('data-appearance',value)}"
+    + "function updateSchemePreview(index){var select=document.getElementById('zone-'+index+'-scheme');var option=select.options[select.selectedIndex];var preview=document.getElementById('zone-'+index+'-scheme-preview');preview.style.color=option.getAttribute('data-text');preview.style.backgroundColor=option.getAttribute('data-background')}"
     + "function hideUnchecked(kind,index){var enabled=document.getElementById(kind+'-'+index+'-enabled');if(enabled&&!enabled.checked)document.getElementById(kind+'-row-'+index).hidden=true}"
     + "function addRow(kind){var start=kind==='zone'?1:0;var limit=kind==='zone'?" + TIMEZONE_COUNT + ":4;for(var i=start;i<limit;i++){var row=document.getElementById(kind+'-row-'+i);if(row.hidden){row.hidden=false;document.getElementById(kind+'-'+i+'-enabled').checked=true;return}}alert(kind==='zone'?'Maximum four timezones including Home.':'Maximum four reminders.')}"
-    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}var zones=[];for(var z=0;z<" + TIMEZONE_COUNT + ";z++){var label=document.getElementById('zone-'+z+'-label').value.trim().toUpperCase();if(!/^[A-Z0-9 ]{1,8}$/.test(label)){alert('Timezone labels need 1-8 letters, numbers, or spaces.');return;}zones.push({id:z,enabled:z===0||document.getElementById('zone-'+z+'-enabled').checked,timeZone:document.getElementById('zone-'+z+'-time-zone').value,label:label,textColor:parseInt(document.getElementById('zone-'+z+'-text-color').value,10),backgroundColor:parseInt(document.getElementById('zone-'+z+'-background-color').value,10)});}closeWith({action:'save_settings',display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:zones[0].textColor,backgroundColor:zones[0].backgroundColor},zones:zones,slots:slots})}"
+    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}var zones=[];for(var z=0;z<" + TIMEZONE_COUNT + ";z++){var label=document.getElementById('zone-'+z+'-label').value.trim().toUpperCase();if(!/^[A-Z0-9 ]{1,8}$/.test(label)){alert('Timezone labels need 1-8 letters, numbers, or spaces.');return;}var scheme=document.getElementById('zone-'+z+'-scheme').value.split(',');zones.push({id:z,enabled:z===0||document.getElementById('zone-'+z+'-enabled').checked,timeZone:document.getElementById('zone-'+z+'-time-zone').value,label:label,textColor:parseInt(scheme[0],10),backgroundColor:parseInt(scheme[1],10)});}closeWith({action:'save_settings',appearance:document.getElementById('appearance').value,display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:zones[0].textColor,backgroundColor:zones[0].backgroundColor},zones:zones,slots:slots})}"
     + "function clearHistory(){if(confirm('Clear phone report history? This cannot be undone.'))closeWith({action:'clear_history'})}"
     + "function closeReport(){closeWith({action:'close'})}"
     + "function updateZoneLabel(index){var value=document.getElementById('zone-'+index+'-time-zone').value;var p=value.split('/');document.getElementById('zone-'+index+'-label').value=p[p.length-1].replace(/_/g,' ').toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,8)}"
     + "function saveTakenZones(){var nodes=document.querySelectorAll('.taken-zone');var events=[];for(var i=0;i<nodes.length;i++){if(nodes[i].value!==nodes[i].getAttribute('data-initial'))events.push({identity:nodes[i].getAttribute('data-identity'),timeZone:nodes[i].value})}closeWith({action:'update_taken_zones',events:events})}"
+    + "for(var p=0;p<" + TIMEZONE_COUNT + ";p++)updateSchemePreview(p)"
     + "</script>"
     + "</main></body></html>";
 };

@@ -1,4 +1,5 @@
 var reportPage = require("./report-page");
+var colorSchemes = require("./color-schemes");
 var timezone = require("./timezone");
 
 var STORAGE_KEY = "pebble-pills-phone-state-v1";
@@ -35,6 +36,7 @@ function defaultState() {
     droppedEvents: 0,
     warning: null,
     clearedBefore: 0,
+    appearance: "auto",
   };
 }
 
@@ -57,6 +59,9 @@ function loadState() {
     parsed.droppedEvents = Number(parsed.droppedEvents) || 0;
     parsed.warning = parsed.warning || null;
     parsed.clearedBefore = Number(parsed.clearedBefore) || 0;
+    parsed.appearance = ["auto", "light", "dark"].indexOf(parsed.appearance) !== -1
+      ? parsed.appearance
+      : "auto";
     return parsed;
   } catch (error) {
     console.log("Phone state load failed");
@@ -119,8 +124,9 @@ function settingsResponseValid(response, state) {
     || !integerInRange(response.display.horizontal, 0, 2)
     || !integerInRange(response.display.vertical, 0, 2)
     || !integerInRange(response.display.fontSize, 0, 2)
-    || !integerInRange(response.display.textColor, 0, 9)
-    || !integerInRange(response.display.backgroundColor, 0, 9)
+    || !colorSchemes.colorIdValid(response.display.textColor)
+    || !colorSchemes.colorIdValid(response.display.backgroundColor)
+    || ["auto", "light", "dark"].indexOf(response.appearance) === -1
     || !Array.isArray(response.zones)
     || response.zones.length !== TIMEZONE_COUNT
   ) {
@@ -138,8 +144,8 @@ function settingsResponseValid(response, state) {
       || zone.timeZone.length > 64
       || typeof zone.label !== "string"
       || !/^[A-Z0-9 ]{1,8}$/.test(zone.label)
-      || !integerInRange(zone.textColor, 0, 9)
-      || !integerInRange(zone.backgroundColor, 0, 9)
+      || !colorSchemes.colorIdValid(zone.textColor)
+      || !colorSchemes.colorIdValid(zone.backgroundColor)
     ) {
       return false;
     }
@@ -511,6 +517,7 @@ Pebble.addEventListener("webviewclosed", function (event) {
         zones: response.zones,
         slots: response.slots,
       };
+      settingsState.appearance = response.appearance;
       settingsState.warning = null;
       saveState(settingsState);
       sendSettings(response);

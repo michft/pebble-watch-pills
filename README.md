@@ -41,12 +41,12 @@ Edit reminder times with the watch controls above or open Number Watch settings
 in the rePebble phone app. Phone page also controls:
 
 - up to four pill reminder times and enabled state
-- Home plus up to three checked named timezones, each with label and colours
+- Home plus up to three checked named timezones, each with label and one of 20 vivid colour schemes
+- phone appearance: Auto, Light (black on white), or Dark (white on black)
 - time format follows the watch's 12/24-hour system setting
 - horizontal alignment: left, centre, right
 - vertical alignment: top, middle, bottom
 - font size: small, medium, large
-- Home-time text and background colours
 
 Only checked reminders and timezones remain visible on the phone page; use the
 Add buttons at each list's bottom to enable another. Save sends complete
