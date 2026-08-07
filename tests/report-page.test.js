@@ -15,6 +15,7 @@ function zones() {
 test("renders checked-only settings and selectable taken timezone", () => {
   const now = Date.now();
   const html = buildReportPage({
+    appearance: "dark",
     events: [
       {
         installId: "install",
@@ -55,6 +56,16 @@ test("renders checked-only settings and selectable taken timezone", () => {
   assert.match(html, /&lt;unsafe&gt;/);
   assert.doesNotMatch(html, /<unsafe>/);
   assert.match(html, /Save settings/);
+  assert.match(html, /data-appearance='dark'/);
+  assert.match(html, /Phone appearance/);
+  assert.match(html, /Light — black on white/);
+  assert.match(html, /Dark — white on black/);
+  assert.match(html, /id=appearance[^]*<option value=dark selected>/);
+  assert.match(html, /id=zone-0-scheme[^]*Current colours<\/option>/);
+  assert.match(html, /id=zone-0-scheme-preview/);
+  assert.match(html, /updateSchemePreview\(p\)/);
+  assert.doesNotMatch(html, /id=zone-0-text-color/);
+  assert.doesNotMatch(html, /id=zone-0-background-color/);
   assert.match(html, /Time format follows the watch's 12\/24-hour system setting/);
   assert.match(html, /id=slot-row-3 hidden/);
   assert.match(html, /\+ Add reminder/);
@@ -142,7 +153,7 @@ test("falls back to a UTC day when an event Home zone cannot be resolved", () =>
   assert.match(html, /<th scope=row>Pill 1<\/th>/);
 });
 
-test("falls back to Home plus three hidden timezone slots", () => {
+test("falls back to Home plus three hidden timezone slots and auto appearance", () => {
   const html = buildReportPage({
     events: [],
     settings: {
@@ -164,6 +175,8 @@ test("falls back to Home plus three hidden timezone slots", () => {
   assert.match(html, /id=zone-row-2 hidden/);
   assert.match(html, /id=zone-row-3 hidden/);
   assert.match(html, /id=zone-1-time-zone list=timezone-options value='UTC'/);
-  assert.match(html, /id=zone-1-text-color><option value=0>White<\/option><option value=1 selected>Black/);
-  assert.match(html, /id=zone-1-background-color>[^]*<option value=4 selected>Yellow/);
+  assert.match(html, /data-appearance='auto'/);
+  assert.match(html, /id=appearance[^]*<option value=auto selected>/);
+  assert.match(html, /id=zone-1-scheme[^]*value='1,10'[^>]+selected>Solar/);
+  assert.match(html, /prefers-color-scheme:dark/);
 });

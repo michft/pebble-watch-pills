@@ -104,7 +104,7 @@ function defaultZoneSettings(index) {
     timeZone: timeZone,
     label: labelForTimeZone(timeZone),
     textColor: index === 0 ? 0 : 1,
-    backgroundColor: index === 0 ? 1 : 4,
+    backgroundColor: index === 0 ? 1 : 10,
     offsetMinutes: 0,
     transitionAt: 0,
     transitionOffsetMinutes: 0,

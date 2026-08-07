@@ -76,6 +76,7 @@ extern uint32_t MESSAGE_KEY_SLOT_3_ENABLED;
 #define WATCHFACE_DESCENDER_PADDING 6
 #define TIMEZONE_LABEL_LENGTH 8
 #define TIMEZONE_FEEDBACK_MS 1200
+#define COLOR_ID_MAX 19
 #define REMINDER_DURATION_SECONDS (5 * 60)
 #define REMINDER_BUZZ_INTERVAL_MS (30 * 1000)
 
@@ -419,8 +420,8 @@ static bool timezone_label_valid(const char label[TIMEZONE_LABEL_LENGTH + 1]) {
 static bool timezone_settings_valid(const TimezoneSettings *settings) {
   return settings->enabled <= 1
     && settings->use_watch_local <= 1
-    && settings->text_color <= 9
-    && settings->background_color <= 9
+    && settings->text_color <= COLOR_ID_MAX
+    && settings->background_color <= COLOR_ID_MAX
     && settings->utc_offset_minutes >= DISPLAY_TIME_MIN_OFFSET_MINUTES
     && settings->utc_offset_minutes <= DISPLAY_TIME_MAX_OFFSET_MINUTES
     && settings->utc_offset_minutes % DISPLAY_TIME_OFFSET_STEP_MINUTES == 0
@@ -437,8 +438,8 @@ static bool display_settings_valid(const DisplaySettings *settings) {
     || settings->horizontal_alignment > HORIZONTAL_RIGHT
     || settings->vertical_alignment > VERTICAL_BOTTOM
     || settings->font_size > FONT_LARGE
-    || settings->text_color > 9
-    || settings->background_color > 9
+    || settings->text_color > COLOR_ID_MAX
+    || settings->background_color > COLOR_ID_MAX
     || !settings->zones[0].enabled
   ) return false;
   for (uint8_t index = 0; index < TIMEZONE_COUNT; index++) {
@@ -488,7 +489,7 @@ static DisplaySettings migrated_display_settings(
   for (uint8_t index = 0; index < TIMEZONE_COUNT; index++) {
     settings.zones[index].enabled = index < 2;
     settings.zones[index].text_color = index == 0 ? text_color : 1;
-    settings.zones[index].background_color = index == 0 ? background_color : 4;
+    settings.zones[index].background_color = index == 0 ? background_color : 10;
     settings.zones[index].utc_offset_minutes = index == 1 ? alternate_offset : 0;
     settings.zones[index].transition_offset_minutes = settings.zones[index].utc_offset_minutes;
     snprintf(
@@ -637,8 +638,18 @@ static GColor color_for_id(uint8_t color_id) {
     case 5: return GColorGreen;
     case 6: return GColorCyan;
     case 7: return GColorBlue;
-    case 8: return GColorPurple;
+    case 8: return GColorVividViolet;
     case 9: return GColorMagenta;
+    case 10: return GColorChromeYellow;
+    case 11: return GColorBrightGreen;
+    case 12: return GColorElectricBlue;
+    case 13: return GColorVividCerulean;
+    case 14: return GColorPictonBlue;
+    case 15: return GColorIndigo;
+    case 16: return GColorJazzberryJam;
+    case 17: return GColorFolly;
+    case 18: return GColorDarkCandyAppleRed;
+    case 19: return GColorOxfordBlue;
     default: return GColorWhite;
   }
 }
@@ -1636,9 +1647,10 @@ static bool read_timezone_settings(
       || (index == 0 && enabled->value->int32 != 1)
       || !label || label->type != TUPLE_CSTRING
       || strlen(label->value->cstring) > TIMEZONE_LABEL_LENGTH
-      || !text_color || text_color->value->int32 < 0 || text_color->value->int32 > 9
+      || !text_color || text_color->value->int32 < 0
+      || text_color->value->int32 > COLOR_ID_MAX
       || !background_color || background_color->value->int32 < 0
-      || background_color->value->int32 > 9
+      || background_color->value->int32 > COLOR_ID_MAX
       || !offset || offset->value->int32 < DISPLAY_TIME_MIN_OFFSET_MINUTES
       || offset->value->int32 > DISPLAY_TIME_MAX_OFFSET_MINUTES
       || offset->value->int32 % DISPLAY_TIME_OFFSET_STEP_MINUTES != 0
@@ -1704,7 +1716,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
     MESSAGE_KEY_TEXT_COLOR,
     MESSAGE_KEY_BACKGROUND_COLOR,
   };
-  const int32_t display_maximums[] = {2, 2, 2, 9, 9};
+  const int32_t display_maximums[] = {2, 2, 2, COLOR_ID_MAX, COLOR_ID_MAX};
   int32_t display_values[ARRAY_LENGTH(display_keys)];
   for (uint8_t index = 0; index < ARRAY_LENGTH(display_keys); index++) {
     Tuple *value = dict_find(iterator, display_keys[index]);
