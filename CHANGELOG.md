@@ -4,12 +4,12 @@ All published versions are tracked here and as GitHub Releases.
 
 ## [0.2.10] - 2026-08-08
 
-- Retry failed phone-to-watch settings delivery and keep changed colours pending
-  until a watch snapshot confirms them, preventing stale settings from replacing
-  the phone selection.
+- Make up to three serialized phone-to-watch settings delivery attempts, ignore
+  stale retry callbacks after a newer save, and keep settings pending until the
+  watch confirms their timezone state, labels, and colours.
 - Let phone report history retain the last 7 or 30 days, or clear everything,
   while continuing to exclude cleared watch events from later resyncs.
-- Export the report records selected for clearing to a local JSON file.
+- Export every report record selected for clearing to a local JSON file.
 
 ## [0.2.9] - 2026-08-07
 

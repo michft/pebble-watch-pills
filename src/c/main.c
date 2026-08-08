@@ -1464,6 +1464,14 @@ static void send_payload(int32_t type, const char *payload) {
   app_message_outbox_send();
 }
 
+static uint32_t timezone_state_fingerprint(const TimezoneSettings *zone) {
+  uint32_t fingerprint = (uint32_t)(zone->utc_offset_minutes + 12 * 60);
+  fingerprint = fingerprint * 65599u + (uint32_t)zone->transition_at;
+  fingerprint = fingerprint * 65599u
+    + (uint32_t)(zone->transition_offset_minutes + 12 * 60);
+  return fingerprint;
+}
+
 static void send_settings_snapshot(void) {
   static char payload[900];
   char install_id[16];
@@ -1474,10 +1482,10 @@ static void send_settings_snapshot(void) {
     "{\"installId\":\"%s\",\"revision\":%lu,\"droppedEvents\":%u,\"hour12\":%s,"
     "\"display\":{\"horizontal\":%u,\"vertical\":%u,\"fontSize\":%u,"
     "\"textColor\":%u,\"backgroundColor\":%u},\"zones\":["
-    "{\"id\":0,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u},"
-    "{\"id\":1,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u},"
-    "{\"id\":2,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u},"
-    "{\"id\":3,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u}],\"slots\":["
+    "{\"id\":0,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
+    "{\"id\":1,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
+    "{\"id\":2,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
+    "{\"id\":3,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu}],\"slots\":["
     "{\"id\":0,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
     "{\"id\":1,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
     "{\"id\":2,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
@@ -1495,18 +1503,22 @@ static void send_settings_snapshot(void) {
     s_display_settings.zones[0].label,
     s_display_settings.zones[0].text_color,
     s_display_settings.zones[0].background_color,
+    (unsigned long)timezone_state_fingerprint(&s_display_settings.zones[0]),
     s_display_settings.zones[1].enabled ? "true" : "false",
     s_display_settings.zones[1].label,
     s_display_settings.zones[1].text_color,
     s_display_settings.zones[1].background_color,
+    (unsigned long)timezone_state_fingerprint(&s_display_settings.zones[1]),
     s_display_settings.zones[2].enabled ? "true" : "false",
     s_display_settings.zones[2].label,
     s_display_settings.zones[2].text_color,
     s_display_settings.zones[2].background_color,
+    (unsigned long)timezone_state_fingerprint(&s_display_settings.zones[2]),
     s_display_settings.zones[3].enabled ? "true" : "false",
     s_display_settings.zones[3].label,
     s_display_settings.zones[3].text_color,
     s_display_settings.zones[3].background_color,
+    (unsigned long)timezone_state_fingerprint(&s_display_settings.zones[3]),
     s_state.slots[0].hour, s_state.slots[0].minute, s_state.slots[0].enabled ? "true" : "false",
     s_state.slots[1].hour, s_state.slots[1].minute, s_state.slots[1].enabled ? "true" : "false",
     s_state.slots[2].hour, s_state.slots[2].minute, s_state.slots[2].enabled ? "true" : "false",

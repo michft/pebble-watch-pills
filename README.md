@@ -51,7 +51,7 @@ in the rePebble phone app. Phone page also controls:
 Only checked reminders and timezones remain visible on the phone page; use the
 Add buttons at each list's bottom to enable another. Save sends complete
 configuration to watch atomically, then requests a fresh watch-to-phone report
-sync. Failed delivery retries up to three times, and the phone keeps the saved
+sync. Failed delivery makes up to three attempts, and the phone keeps the saved
 settings pending until the watch snapshot confirms them. Enabled reminders must
 remain at least two minutes apart. Phone resolves
 IANA daylight-saving rules for every timezone on bridge connection, settings
