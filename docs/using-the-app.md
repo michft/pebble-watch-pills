@@ -82,6 +82,18 @@ fixed 24-hour arithmetic. Save with **Save taken timezones**.
 The phone does not create the acknowledgement. It receives the saved outcome
 from the watch during synchronisation.
 
+## Export or clear report history
+
+1. Under **Report history**, choose to keep the last **7 days**, **30 days**, or
+   **Nothing — clear all**.
+2. Use **Save records to file** to export the records that the selected clear
+   operation will remove as JSON.
+3. Use **Clear older records** and confirm.
+
+Clearing changes only phone-local history. The selected cutoff also prevents
+older retained watch events from reappearing after synchronisation. Records
+newer than the cutoff remain available.
+
 ## If the phone still shows Not taken
 
 Check these in order:
@@ -90,8 +102,8 @@ Check these in order:
 2. Confirm the watch returned to the word-time display.
 3. Reopen phone settings and check that **Last synced** advances.
 4. Confirm the watch is connected in rePebble.
-5. Do not press **Clear phone report** while diagnosing. It deletes the phone's
-   local report and excludes older retained watch events from later syncs.
+5. Do not clear report history while diagnosing. It deletes the selected
+   phone-local records and excludes them from later watch resyncs.
 
 If the watch did not return to the word-time display after Up, the
 response was not completed. If it returned but the phone did not update after

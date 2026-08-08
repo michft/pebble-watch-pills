@@ -17,6 +17,13 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function jsonForScript(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 /**
  * Formats a value with a leading zero when it is less than 10.
  * @param {number} value - The value to format.
@@ -367,15 +374,24 @@ exports.buildReportPage = function buildReportPage(state) {
     + "<button type=button onclick=saveTakenZones()>Save taken timezones</button></section>"
     + "<p class=muted>Taken means self-reported. Not taken means no Taken response; it does not prove a missed dose. "
     + "This report is not a medical record.</p>"
-    + "<button class=danger onclick=clearHistory()>Clear phone report</button>"
+    + "<section class=card><h2>Report history</h2>"
+    + "<p class=muted>Choose how much recent history to keep. Save exports the records that will be removed.</p>"
+    + "<label for=history-retention>Keep records</label><select id=history-retention>"
+    + "<option value=7>Last 7 days</option><option value=30>Last 30 days</option>"
+    + "<option value=all>Nothing — clear all</option></select>"
+    + "<button type=button onclick=saveClearedRecords()>Save records to file</button>"
+    + "<button class=danger onclick=clearHistory()>Clear older records</button></section>"
     + "<button class=close onclick=closeReport()>Close</button>"
-    + "<script>function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
+    + "<script>var historyEvents=" + jsonForScript(state.events) + ";"
+    + "function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
     + "function applyAppearance(value){document.documentElement.setAttribute('data-appearance',value)}"
     + "function updateSchemePreview(index){var select=document.getElementById('zone-'+index+'-scheme');var option=select.options[select.selectedIndex];var preview=document.getElementById('zone-'+index+'-scheme-preview');preview.style.color=option.getAttribute('data-text');preview.style.backgroundColor=option.getAttribute('data-background')}"
     + "function hideUnchecked(kind,index){var enabled=document.getElementById(kind+'-'+index+'-enabled');if(enabled&&!enabled.checked)document.getElementById(kind+'-row-'+index).hidden=true}"
     + "function addRow(kind){var start=kind==='zone'?1:0;var limit=kind==='zone'?" + TIMEZONE_COUNT + ":4;for(var i=start;i<limit;i++){var row=document.getElementById(kind+'-row-'+i);if(row.hidden){row.hidden=false;document.getElementById(kind+'-'+i+'-enabled').checked=true;return}}alert(kind==='zone'?'Maximum four timezones including Home.':'Maximum four reminders.')}"
     + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var p=document.getElementById('slot-'+i+'-time').value.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:document.getElementById('slot-'+i+'-enabled').checked});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}var zones=[];for(var z=0;z<" + TIMEZONE_COUNT + ";z++){var label=document.getElementById('zone-'+z+'-label').value.trim().toUpperCase();if(!/^[A-Z0-9 ]{1,8}$/.test(label)){alert('Timezone labels need 1-8 letters, numbers, or spaces.');return;}var scheme=document.getElementById('zone-'+z+'-scheme').value.split(',');zones.push({id:z,enabled:z===0||document.getElementById('zone-'+z+'-enabled').checked,timeZone:document.getElementById('zone-'+z+'-time-zone').value,label:label,textColor:parseInt(scheme[0],10),backgroundColor:parseInt(scheme[1],10)});}closeWith({action:'save_settings',appearance:document.getElementById('appearance').value,display:{horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:zones[0].textColor,backgroundColor:zones[0].backgroundColor},zones:zones,slots:slots})}"
-    + "function clearHistory(){if(confirm('Clear phone report history? This cannot be undone.'))closeWith({action:'clear_history'})}"
+    + "function historySelection(){var value=document.getElementById('history-retention').value;var days=value==='all'?0:parseInt(value,10);var cutoff=days===0?Date.now():Date.now()-days*24*60*60*1000;return{days:days,events:historyEvents.filter(function(event){return event.scheduledAt<=cutoff})}}"
+    + "function saveClearedRecords(){var selection=historySelection();if(selection.events.length===0){alert('No records in this range to save.');return;}var payload={exportedAt:new Date().toISOString(),keptDays:selection.days,events:selection.events};var content=JSON.stringify(payload,null,2);var link=document.createElement('a');link.download='number-watch-history-'+new Date().toISOString().slice(0,10)+'.json';if(typeof Blob==='function'&&typeof URL!=='undefined'&&URL.createObjectURL){var objectUrl=URL.createObjectURL(new Blob([content],{type:'application/json'}));link.href=objectUrl;setTimeout(function(){URL.revokeObjectURL(objectUrl)},1000)}else{link.href='data:application/json;charset=utf-8,'+encodeURIComponent(content)}document.body.appendChild(link);link.click();document.body.removeChild(link)}"
+    + "function clearHistory(){var selection=historySelection();var description=selection.days===0?'all phone report history':'records older than '+selection.days+' days';if(confirm('Clear '+description+'? Save them first if needed.'))closeWith({action:'clear_history',retentionDays:selection.days})}"
     + "function closeReport(){closeWith({action:'close'})}"
     + "function updateZoneLabel(index){var value=document.getElementById('zone-'+index+'-time-zone').value;var p=value.split('/');document.getElementById('zone-'+index+'-label').value=p[p.length-1].replace(/_/g,' ').toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,8)}"
     + "function saveTakenZones(){var nodes=document.querySelectorAll('.taken-zone');var events=[];for(var i=0;i<nodes.length;i++){if(nodes[i].value!==nodes[i].getAttribute('data-initial'))events.push({identity:nodes[i].getAttribute('data-identity'),timeZone:nodes[i].value})}closeWith({action:'update_taken_zones',events:events})}"

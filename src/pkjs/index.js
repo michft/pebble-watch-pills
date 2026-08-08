@@ -4,6 +4,7 @@ var timezone = require("./timezone");
 
 var STORAGE_KEY = "pebble-pills-phone-state-v1";
 var NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+var REPORT_RETENTION_DAYS = [7, 30];
 var TIMEZONE_COUNT = timezone.TIMEZONE_COUNT;
 var normaliseZoneSettings = timezone.normaliseZoneSettings;
 var normaliseZones = timezone.normaliseZones;
@@ -22,6 +23,9 @@ var MessageType = {
 
 var zoneRefreshTimer = null;
 var MAX_ZONE_REFRESH_DELAY_MS = 20 * 24 * 60 * 60 * 1000;
+var SETTINGS_RETRY_DELAY_MS = 1000;
+var SETTINGS_MAX_ATTEMPTS = 3;
+var SETTINGS_WARNING_PREFIX = "Watch settings delivery failed.";
 
 /**
  * Creates an empty phone-side synchronisation state.
@@ -37,6 +41,7 @@ function defaultState() {
     warning: null,
     clearedBefore: 0,
     appearance: "auto",
+    pendingSettings: null,
   };
 }
 
@@ -62,6 +67,7 @@ function loadState() {
     parsed.appearance = ["auto", "light", "dark"].indexOf(parsed.appearance) !== -1
       ? parsed.appearance
       : "auto";
+    parsed.pendingSettings = parsed.pendingSettings || null;
     return parsed;
   } catch (error) {
     console.log("Phone state load failed");
@@ -182,6 +188,38 @@ function settingsResponseValid(response, state) {
   return true;
 }
 
+function settingsSnapshotMatches(payload, response) {
+  if (!payload.display || !Array.isArray(payload.zones)) return false;
+  var displayKeys = ["horizontal", "vertical", "fontSize", "textColor", "backgroundColor"];
+  for (var displayIndex = 0; displayIndex < displayKeys.length; displayIndex += 1) {
+    var displayKey = displayKeys[displayIndex];
+    if (payload.display[displayKey] !== response.display[displayKey]) return false;
+  }
+  for (var zoneIndex = 0; zoneIndex < TIMEZONE_COUNT; zoneIndex += 1) {
+    var watchZone = payload.zones[zoneIndex];
+    var requestedZone = response.zones[zoneIndex];
+    if (
+      !watchZone
+      || watchZone.enabled !== requestedZone.enabled
+      || watchZone.label !== requestedZone.label
+      || watchZone.textColor !== requestedZone.textColor
+      || watchZone.backgroundColor !== requestedZone.backgroundColor
+    ) return false;
+  }
+  for (var slotIndex = 0; slotIndex < response.slots.length; slotIndex += 1) {
+    var watchSlot = payload.slots[slotIndex];
+    var requestedSlot = response.slots[slotIndex];
+    if (
+      !watchSlot
+      || watchSlot.id !== requestedSlot.id
+      || watchSlot.hour !== requestedSlot.hour
+      || watchSlot.minute !== requestedSlot.minute
+      || watchSlot.enabled !== requestedSlot.enabled
+    ) return false;
+  }
+  return true;
+}
+
 function timezoneMessage(zones, type) {
   var message = { TYPE: type };
   var nextTransitionAt = 0;
@@ -269,7 +307,8 @@ function pushTimezoneUpdate(settings, complete) {
   );
 }
 
-function sendSettings(response) {
+function sendSettings(response, attempt) {
+  var deliveryAttempt = attempt || 1;
   if (!settingsResponseValid(response)) {
     console.log("Phone settings invalid");
     return;
@@ -295,10 +334,27 @@ function sendSettings(response) {
   Pebble.sendAppMessage(
     message,
     function () {
+      var state = loadState();
+      if (state.warning && state.warning.indexOf(SETTINGS_WARNING_PREFIX) === 0) {
+        state.warning = null;
+        saveState(state);
+      }
       scheduleTimezoneRefresh({ transitionAt: update.transitionAt });
       requestSync();
     },
-    function () { console.log("Phone settings send failed"); }
+    function () {
+      console.log("Phone settings send failed");
+      var state = loadState();
+      state.warning = deliveryAttempt < SETTINGS_MAX_ATTEMPTS
+        ? SETTINGS_WARNING_PREFIX + " Retrying."
+        : SETTINGS_WARNING_PREFIX + " Reopen settings with the watch connected.";
+      saveState(state);
+      if (deliveryAttempt < SETTINGS_MAX_ATTEMPTS) {
+        setTimeout(function () {
+          sendSettings(response, deliveryAttempt + 1);
+        }, SETTINGS_RETRY_DELAY_MS * deliveryAttempt);
+      }
+    }
   );
 }
 
@@ -435,6 +491,19 @@ function handleSettings(payload) {
     normalised.timeZone = priorZones[index].timeZone;
     return normalised;
   });
+  if (
+    state.pendingSettings
+    && settingsResponseValid(state.pendingSettings)
+    && !settingsSnapshotMatches(payload, state.pendingSettings)
+  ) {
+    state.warning = "Watch did not apply the saved settings. Reconnect it and reopen settings to retry.";
+    saveState(state);
+    return;
+  }
+  state.pendingSettings = null;
+  if (state.warning && state.warning.indexOf("Watch did not apply") === 0) {
+    state.warning = null;
+  }
   state.settings = payload;
   state.droppedEvents = Math.max(
     state.droppedEvents,
@@ -458,7 +527,12 @@ function handleSyncDone(payload) {
 
 Pebble.addEventListener("ready", function () {
   console.log("Number Watch phone bridge ready");
-  pushTimezoneUpdate(loadState().settings, requestSync);
+  var state = loadState();
+  if (state.pendingSettings && settingsResponseValid(state.pendingSettings)) {
+    sendSettings(state.pendingSettings);
+  } else {
+    pushTimezoneUpdate(state.settings, requestSync);
+  }
 });
 
 Pebble.addEventListener("appmessage", function (event) {
@@ -496,10 +570,22 @@ Pebble.addEventListener("webviewclosed", function (event) {
     var response = JSON.parse(decodeURIComponent(event.response));
     if (response.action === "clear_history") {
       var state = loadState();
-      state.events = [];
-      state.droppedEvents = 0;
-      state.warning = null;
-      state.clearedBefore = Date.now();
+      var retentionDays = response.retentionDays === undefined
+        ? 0
+        : response.retentionDays;
+      if (retentionDays !== 0 && REPORT_RETENTION_DAYS.indexOf(retentionDays) === -1) {
+        return;
+      }
+      var cutoff = retentionDays === 0
+        ? Date.now()
+        : Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+      state.events = retentionDays === 0
+        ? []
+        : state.events.filter(function (storedEvent) {
+          return storedEvent.scheduledAt > cutoff;
+        });
+      if (retentionDays === 0) state.droppedEvents = 0;
+      state.clearedBefore = Math.max(state.clearedBefore, cutoff);
       saveState(state);
     } else if (response.action === "save_settings") {
       var settingsState = loadState();
@@ -518,6 +604,7 @@ Pebble.addEventListener("webviewclosed", function (event) {
         slots: response.slots,
       };
       settingsState.appearance = response.appearance;
+      settingsState.pendingSettings = response;
       settingsState.warning = null;
       saveState(settingsState);
       sendSettings(response);
