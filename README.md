@@ -51,7 +51,9 @@ in the rePebble phone app. Phone page also controls:
 Only checked reminders and timezones remain visible on the phone page; use the
 Add buttons at each list's bottom to enable another. Save sends complete
 configuration to watch atomically, then requests a fresh watch-to-phone report
-sync. Enabled reminders must remain at least two minutes apart. Phone resolves
+sync. Failed delivery makes up to three attempts, and the phone keeps the saved
+settings pending until the watch snapshot confirms them. Enabled reminders must
+remain at least two minutes apart. Phone resolves
 IANA daylight-saving rules for every timezone on bridge connection, settings
 save, and report sync, then sends current offsets plus next transitions.
 
@@ -63,9 +65,10 @@ first receives an event. A Taken row can render its actual answer instant in
 any checked timezone, including different dates on travel or daylight-saving
 days. Taken means self-reported. Report is not a medical record.
 
-**Clear phone report** removes phone-local history. Later synchronisation ignores
-retained watch events scheduled before the clear, while accepting new events.
-The watch's retained history is unchanged.
+**Report history** can keep the last 7 or 30 days, or clear everything. Save the
+records selected for removal to a JSON file before clearing if required. Later
+synchronisation ignores retained watch events scheduled before the selected
+cutoff while accepting newer events. The watch's retained history is unchanged.
 
 ## Emulator examples
 

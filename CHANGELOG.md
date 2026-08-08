@@ -2,6 +2,15 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.10] - 2026-08-08
+
+- Make up to three serialized phone-to-watch settings delivery attempts, ignore
+  stale retry callbacks after a newer save, and keep settings pending until the
+  watch confirms their timezone state, labels, and colours.
+- Let phone report history retain the last 7 or 30 days, or clear everything,
+  while continuing to exclude cleared watch events from later resyncs.
+- Export every report record selected for clearing to a local JSON file.
+
 ## [0.2.9] - 2026-08-07
 
 - Replace separate watch text/background colour choices with 20 vivid,

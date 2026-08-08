@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const vm = require("node:vm");
 const { buildReportPage } = require("../src/pkjs/report-page.js");
 const { dateKeyAt } = require("../src/pkjs/timezone.js");
 
@@ -90,6 +91,13 @@ test("renders checked-only settings and selectable taken timezone", () => {
     /nodes\[i\]\.value!==nodes\[i\]\.getAttribute\('data-initial'\)/,
   );
   assert.match(html, /Enabled reminders need at least a two minute gap/);
+  assert.match(html, /Report history/);
+  assert.match(html, /id=history-retention/);
+  assert.match(html, /value=7>Last 7 days/);
+  assert.match(html, /value=30>Last 30 days/);
+  assert.match(html, /Save records to file/);
+  assert.match(html, /new Blob\(\[content\]/);
+  assert.match(html, /retentionDays:selection\.days/);
 });
 
 test("deduplicates one expected pill per Home day and slot", () => {
@@ -179,4 +187,67 @@ test("falls back to Home plus three hidden timezone slots and auto appearance", 
   assert.match(html, /id=appearance[^]*<option value=auto selected>/);
   assert.match(html, /id=zone-1-scheme[^]*value='1,10'[^>]+selected>Solar/);
   assert.match(html, /prefers-color-scheme:dark/);
+});
+
+test("exports only history selected for clearing", () => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const html = buildReportPage({
+    events: [
+      { installId: "watch", sequence: 1, slotId: 0, scheduledAt: now - 8 * day, localDay: "2026-07-31", outcome: "no_response", answeredAt: null },
+      { installId: "watch", sequence: 2, slotId: 0, scheduledAt: now - 6 * day, localDay: "2026-08-02", outcome: "taken", answeredAt: now - 6 * day + 1 },
+      { installId: "watch", sequence: 3, slotId: 0, scheduledAt: now + day, localDay: "2026-08-09", outcome: "no_response", answeredAt: null },
+    ],
+    settings: { zones: zones(), slots: [] },
+    lastSyncAt: now,
+    droppedEvents: 0,
+    warning: null,
+  });
+  const script = html.match(/<script>([\s\S]+)<\/script>/)[1];
+  const elements = { "history-retention": { value: "7" } };
+  for (let index = 0; index < 4; index += 1) {
+    elements[`zone-${index}-scheme`] = {
+      selectedIndex: 0,
+      options: [{ getAttribute() { return "#000000"; } }],
+    };
+    elements[`zone-${index}-scheme-preview`] = { style: {} };
+  }
+  let fileContent = null;
+  let clicked = false;
+  const link = { click() { clicked = true; } };
+  const context = {
+    Blob: function Blob(parts) { fileContent = parts.join(""); },
+    Date,
+    JSON,
+    URL: { createObjectURL() { return "blob:history"; }, revokeObjectURL() {} },
+    alert(message) { throw new Error(message); },
+    document: {
+      body: { appendChild() {}, removeChild() {} },
+      createElement() { return link; },
+      documentElement: { setAttribute() {} },
+      getElementById(id) { return elements[id]; },
+      querySelectorAll() { return []; },
+    },
+    encodeURIComponent,
+    location: { href: "" },
+    parseInt,
+    setTimeout() {},
+  };
+
+  vm.runInNewContext(script, context);
+  context.saveClearedRecords();
+
+  const exported = JSON.parse(fileContent);
+  assert.equal(clicked, true);
+  assert.equal(link.download.startsWith("number-watch-history-"), true);
+  assert.deepEqual(exported.events.map((event) => event.sequence), [1]);
+  assert.equal(exported.keptDays, 7);
+
+  elements["history-retention"].value = "all";
+  fileContent = null;
+  context.saveClearedRecords();
+
+  const allExported = JSON.parse(fileContent);
+  assert.deepEqual(allExported.events.map((event) => event.sequence), [1, 2, 3]);
+  assert.equal(allExported.keptDays, 0);
 });
