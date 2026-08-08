@@ -26,6 +26,7 @@ var MAX_ZONE_REFRESH_DELAY_MS = 20 * 24 * 60 * 60 * 1000;
 var SETTINGS_RETRY_DELAY_MS = 1000;
 var SETTINGS_MAX_ATTEMPTS = 3;
 var SETTINGS_WARNING_PREFIX = "Watch settings delivery failed.";
+var settingsDeliveryGeneration = null;
 
 /**
  * Creates an empty phone-side synchronisation state.
@@ -41,6 +42,7 @@ function defaultState() {
     warning: null,
     clearedBefore: 0,
     appearance: "auto",
+    settingsGeneration: 0,
     pendingSettings: null,
   };
 }
@@ -67,7 +69,19 @@ function loadState() {
     parsed.appearance = ["auto", "light", "dark"].indexOf(parsed.appearance) !== -1
       ? parsed.appearance
       : "auto";
+    parsed.settingsGeneration = Number.isInteger(parsed.settingsGeneration)
+      && parsed.settingsGeneration >= 0
+      ? parsed.settingsGeneration
+      : 0;
     parsed.pendingSettings = parsed.pendingSettings || null;
+    if (parsed.pendingSettings && !parsed.pendingSettings.response) {
+      parsed.settingsGeneration = Math.max(parsed.settingsGeneration, 1);
+      parsed.pendingSettings = {
+        generation: parsed.settingsGeneration,
+        response: parsed.pendingSettings,
+        zoneFingerprints: null,
+      };
+    }
     return parsed;
   } catch (error) {
     console.log("Phone state load failed");
@@ -188,8 +202,13 @@ function settingsResponseValid(response, state) {
   return true;
 }
 
-function settingsSnapshotMatches(payload, response) {
-  if (!payload.display || !Array.isArray(payload.zones)) return false;
+function settingsSnapshotMatches(payload, response, zoneFingerprints) {
+  if (
+    !payload.display
+    || !Array.isArray(payload.zones)
+    || !Array.isArray(zoneFingerprints)
+    || zoneFingerprints.length !== TIMEZONE_COUNT
+  ) return false;
   var displayKeys = ["horizontal", "vertical", "fontSize", "textColor", "backgroundColor"];
   for (var displayIndex = 0; displayIndex < displayKeys.length; displayIndex += 1) {
     var displayKey = displayKeys[displayIndex];
@@ -204,6 +223,7 @@ function settingsSnapshotMatches(payload, response) {
       || watchZone.label !== requestedZone.label
       || watchZone.textColor !== requestedZone.textColor
       || watchZone.backgroundColor !== requestedZone.backgroundColor
+      || watchZone.timezoneFingerprint !== zoneFingerprints[zoneIndex]
     ) return false;
   }
   for (var slotIndex = 0; slotIndex < response.slots.length; slotIndex += 1) {
@@ -220,9 +240,21 @@ function settingsSnapshotMatches(payload, response) {
   return true;
 }
 
+function timezoneStateFingerprint(snapshot) {
+  var fingerprint = (snapshot.offsetMinutes + 12 * 60) >>> 0;
+  fingerprint = (fingerprint * 65599 + snapshot.transitionAt) >>> 0;
+  fingerprint = (
+    fingerprint * 65599
+    + snapshot.transitionOffsetMinutes
+    + 12 * 60
+  ) >>> 0;
+  return fingerprint;
+}
+
 function timezoneMessage(zones, type) {
   var message = { TYPE: type };
   var nextTransitionAt = 0;
+  var zoneFingerprints = [];
   for (var index = 0; index < zones.length; index += 1) {
     var zone = zones[index];
     var snapshot = timezone.timezoneSnapshot(
@@ -246,6 +278,7 @@ function timezoneMessage(zones, type) {
     message[prefix + "UTC_OFFSET_MINUTES"] = snapshot.offsetMinutes;
     message[prefix + "TRANSITION_AT"] = snapshot.transitionAt;
     message[prefix + "TRANSITION_OFFSET_MINUTES"] = snapshot.transitionOffsetMinutes;
+    zoneFingerprints.push(timezoneStateFingerprint(snapshot));
     if (
       snapshot.transitionAt > 0
       && (nextTransitionAt === 0 || snapshot.transitionAt < nextTransitionAt)
@@ -253,7 +286,11 @@ function timezoneMessage(zones, type) {
       nextTransitionAt = snapshot.transitionAt;
     }
   }
-  return { message: message, transitionAt: nextTransitionAt };
+  return {
+    message: message,
+    transitionAt: nextTransitionAt,
+    zoneFingerprints: zoneFingerprints,
+  };
 }
 
 function scheduleTimezoneRefresh(snapshot) {
@@ -307,17 +344,31 @@ function pushTimezoneUpdate(settings, complete) {
   );
 }
 
-function sendSettings(response, attempt) {
-  var deliveryAttempt = attempt || 1;
+function sendSettingsAttempt(pending, deliveryAttempt) {
+  var response = pending.response;
+  var generation = pending.generation;
   if (!settingsResponseValid(response)) {
+    settingsDeliveryGeneration = null;
     console.log("Phone settings invalid");
     return;
   }
   var update = timezoneMessage(response.zones, MessageType.SETTINGS_UPDATE);
   if (!update) {
+    settingsDeliveryGeneration = null;
     console.log("Named timezones unavailable on phone");
     return;
   }
+  var pendingState = loadState();
+  if (
+    !pendingState.pendingSettings
+    || pendingState.pendingSettings.generation !== generation
+  ) {
+    settingsDeliveryGeneration = null;
+    sendPendingSettings();
+    return;
+  }
+  pendingState.pendingSettings.zoneFingerprints = update.zoneFingerprints;
+  saveState(pendingState);
   var message = update.message;
   message.H_ALIGN = response.display.horizontal;
   message.V_ALIGN = response.display.vertical;
@@ -334,7 +385,17 @@ function sendSettings(response, attempt) {
   Pebble.sendAppMessage(
     message,
     function () {
+      if (settingsDeliveryGeneration === generation) {
+        settingsDeliveryGeneration = null;
+      }
       var state = loadState();
+      if (
+        !state.pendingSettings
+        || state.pendingSettings.generation !== generation
+      ) {
+        sendPendingSettings();
+        return;
+      }
       if (state.warning && state.warning.indexOf(SETTINGS_WARNING_PREFIX) === 0) {
         state.warning = null;
         saveState(state);
@@ -344,18 +405,44 @@ function sendSettings(response, attempt) {
     },
     function () {
       console.log("Phone settings send failed");
+      if (settingsDeliveryGeneration === generation) {
+        settingsDeliveryGeneration = null;
+      }
       var state = loadState();
+      if (
+        !state.pendingSettings
+        || state.pendingSettings.generation !== generation
+      ) {
+        sendPendingSettings();
+        return;
+      }
       state.warning = deliveryAttempt < SETTINGS_MAX_ATTEMPTS
         ? SETTINGS_WARNING_PREFIX + " Retrying."
         : SETTINGS_WARNING_PREFIX + " Reopen settings with the watch connected.";
       saveState(state);
       if (deliveryAttempt < SETTINGS_MAX_ATTEMPTS) {
         setTimeout(function () {
-          sendSettings(response, deliveryAttempt + 1);
+          var retryState = loadState();
+          if (
+            settingsDeliveryGeneration !== null
+            || !retryState.pendingSettings
+            || retryState.pendingSettings.generation !== generation
+          ) return;
+          settingsDeliveryGeneration = generation;
+          sendSettingsAttempt(retryState.pendingSettings, deliveryAttempt + 1);
         }, SETTINGS_RETRY_DELAY_MS * deliveryAttempt);
       }
     }
   );
+}
+
+function sendPendingSettings() {
+  if (settingsDeliveryGeneration !== null) return;
+  var state = loadState();
+  var pending = state.pendingSettings;
+  if (!pending || !settingsResponseValid(pending.response)) return;
+  settingsDeliveryGeneration = pending.generation;
+  sendSettingsAttempt(pending, 1);
 }
 
 /**
@@ -489,12 +576,19 @@ function handleSettings(payload) {
   payload.zones = watchZones.map(function (zone, index) {
     var normalised = normaliseZoneSettings(zone, index);
     normalised.timeZone = priorZones[index].timeZone;
+    normalised.timezoneFingerprint = Number.isInteger(zone.timezoneFingerprint)
+      ? zone.timezoneFingerprint
+      : null;
     return normalised;
   });
   if (
     state.pendingSettings
-    && settingsResponseValid(state.pendingSettings)
-    && !settingsSnapshotMatches(payload, state.pendingSettings)
+    && settingsResponseValid(state.pendingSettings.response)
+    && !settingsSnapshotMatches(
+      payload,
+      state.pendingSettings.response,
+      state.pendingSettings.zoneFingerprints
+    )
   ) {
     state.warning = "Watch did not apply the saved settings. Reconnect it and reopen settings to retry.";
     saveState(state);
@@ -528,8 +622,8 @@ function handleSyncDone(payload) {
 Pebble.addEventListener("ready", function () {
   console.log("Number Watch phone bridge ready");
   var state = loadState();
-  if (state.pendingSettings && settingsResponseValid(state.pendingSettings)) {
-    sendSettings(state.pendingSettings);
+  if (state.pendingSettings && settingsResponseValid(state.pendingSettings.response)) {
+    sendPendingSettings();
   } else {
     pushTimezoneUpdate(state.settings, requestSync);
   }
@@ -604,10 +698,15 @@ Pebble.addEventListener("webviewclosed", function (event) {
         slots: response.slots,
       };
       settingsState.appearance = response.appearance;
-      settingsState.pendingSettings = response;
+      settingsState.settingsGeneration += 1;
+      settingsState.pendingSettings = {
+        generation: settingsState.settingsGeneration,
+        response: response,
+        zoneFingerprints: null,
+      };
       settingsState.warning = null;
       saveState(settingsState);
-      sendSettings(response);
+      sendPendingSettings();
     } else if (response.action === "update_taken_zones" && Array.isArray(response.events)) {
       var historyState = loadState();
       var allowedZones = normaliseZones(historyState.settings)

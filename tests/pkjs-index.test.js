@@ -8,6 +8,17 @@ const {
 
 const STORAGE_KEY = "pebble-pills-phone-state-v1";
 
+function timezoneFingerprint(timeZone) {
+  const snapshot = timezoneSnapshot(timeZone, Date.now());
+  let fingerprint = (snapshot.offsetMinutes + 12 * 60) >>> 0;
+  fingerprint = (fingerprint * 65_599 + snapshot.transitionAt) >>> 0;
+  return (
+    fingerprint * 65_599
+    + snapshot.transitionOffsetMinutes
+    + 12 * 60
+  ) >>> 0;
+}
+
 test("cleared phone history stays clear when retained watch events resync", () => {
   const handlers = {};
   const clearedEvent = {
@@ -340,6 +351,7 @@ test("saving phone settings requests a full watch sync after delivery", () => {
     sent[0].success();
     assert.equal(sent.length, 2);
     assert.equal(sent[1].message.TYPE, 7);
+    const fingerprints = JSON.parse(stored).pendingSettings.zoneFingerprints;
 
     const snapshot = (homeTextColor, homeBackgroundColor) => ({
       installId: "watch",
@@ -354,10 +366,10 @@ test("saving phone settings requests a full watch sync after delivery", () => {
         backgroundColor: homeBackgroundColor,
       },
       zones: [
-        { id: 0, enabled: true, label: "SYDNEY", textColor: homeTextColor, backgroundColor: homeBackgroundColor },
-        { id: 1, enabled: true, label: "LONDON", textColor: 1, backgroundColor: 10 },
-        { id: 2, enabled: true, label: "TOKYO", textColor: 1, backgroundColor: 13 },
-        { id: 3, enabled: false, label: "NEW YORK", textColor: 1, backgroundColor: 17 },
+        { id: 0, enabled: true, label: "SYDNEY", textColor: homeTextColor, backgroundColor: homeBackgroundColor, timezoneFingerprint: fingerprints[0] },
+        { id: 1, enabled: true, label: "LONDON", textColor: 1, backgroundColor: 10, timezoneFingerprint: fingerprints[1] },
+        { id: 2, enabled: true, label: "TOKYO", textColor: 1, backgroundColor: 13, timezoneFingerprint: fingerprints[2] },
+        { id: 3, enabled: false, label: "NEW YORK", textColor: 1, backgroundColor: 17, timezoneFingerprint: fingerprints[3] },
       ],
       slots: [
         { id: 0, hour: 8, minute: 0, enabled: true },
@@ -389,7 +401,120 @@ test("saving phone settings requests a full watch sync after delivery", () => {
   }
 });
 
-test("retries a failed watch settings delivery without losing colour changes", () => {
+test("keeps pending settings when only the timezone was not applied", () => {
+  const handlers = {};
+  const sent = [];
+  const display = {
+    horizontal: 1,
+    vertical: 1,
+    fontSize: 2,
+    textColor: 1,
+    backgroundColor: 19,
+  };
+  const slots = [
+    { id: 0, hour: 8, minute: 0, enabled: true },
+    { id: 1, hour: 12, minute: 0, enabled: true },
+    { id: 2, hour: 18, minute: 0, enabled: true },
+    { id: 3, hour: 22, minute: 0, enabled: true },
+  ];
+  const oldZones = [
+    { id: 0, enabled: true, timeZone: "Australia/Sydney", label: "SYDNEY", textColor: 1, backgroundColor: 19 },
+    { id: 1, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
+    { id: 2, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
+    { id: 3, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
+  ];
+  const newZones = oldZones.map((zone, index) => ({
+    ...zone,
+    timeZone: index === 0 ? "Australia/Brisbane" : zone.timeZone,
+  }));
+  let stored = JSON.stringify({
+    version: 1,
+    events: [],
+    settings: {
+      installId: "watch",
+      revision: 1,
+      droppedEvents: 0,
+      hour12: false,
+      display,
+      zones: oldZones,
+      slots,
+    },
+    lastSyncAt: null,
+    droppedEvents: 0,
+    warning: null,
+    clearedBefore: 0,
+    appearance: "auto",
+  });
+
+  global.localStorage = {
+    getItem() { return stored; },
+    setItem(key, value) { if (key === STORAGE_KEY) stored = value; },
+  };
+  global.Pebble = {
+    addEventListener(name, handler) { handlers[name] = handler; },
+    sendAppMessage(message) { sent.push(message); },
+  };
+
+  const indexPath = require.resolve("../src/pkjs/index.js");
+  delete require.cache[indexPath];
+  try {
+    require(indexPath);
+    handlers.webviewclosed({
+      response: encodeURIComponent(JSON.stringify({
+        action: "save_settings",
+        appearance: "auto",
+        display,
+        zones: newZones,
+        slots,
+      })),
+    });
+
+    assert.equal(sent[0].TYPE, 8);
+    let state = JSON.parse(stored);
+    const expectedFingerprints = state.pendingSettings.zoneFingerprints;
+    const oldFingerprint = timezoneFingerprint("Australia/Sydney");
+    assert.notEqual(oldFingerprint, expectedFingerprints[0]);
+    const snapshot = {
+      installId: "watch",
+      revision: 2,
+      droppedEvents: 0,
+      hour12: false,
+      display,
+      zones: oldZones.map((zone, index) => ({
+        id: zone.id,
+        enabled: zone.enabled,
+        label: zone.label,
+        textColor: zone.textColor,
+        backgroundColor: zone.backgroundColor,
+        timezoneFingerprint: index === 0
+          ? oldFingerprint
+          : expectedFingerprints[index],
+      })),
+      slots,
+    };
+
+    handlers.appmessage({
+      payload: { TYPE: 5, PAYLOAD: JSON.stringify(snapshot) },
+    });
+    state = JSON.parse(stored);
+    assert.equal(state.pendingSettings.response.zones[0].timeZone, "Australia/Brisbane");
+    assert.match(state.warning, /did not apply/);
+
+    snapshot.zones[0].timezoneFingerprint = expectedFingerprints[0];
+    handlers.appmessage({
+      payload: { TYPE: 5, PAYLOAD: JSON.stringify(snapshot) },
+    });
+    state = JSON.parse(stored);
+    assert.equal(state.pendingSettings, null);
+    assert.equal(state.settings.zones[0].timeZone, "Australia/Brisbane");
+  } finally {
+    delete require.cache[indexPath];
+    delete global.localStorage;
+    delete global.Pebble;
+  }
+});
+
+test("ignores an old retry after newer watch settings are saved", () => {
   const handlers = {};
   const sent = [];
   const scheduled = [];
@@ -422,39 +547,48 @@ test("retries a failed watch settings delivery without losing colour changes", (
   const indexPath = require.resolve("../src/pkjs/index.js");
   delete require.cache[indexPath];
   try {
+    const response = (backgroundColor) => ({
+      action: "save_settings",
+      appearance: "auto",
+      display: { horizontal: 1, vertical: 1, fontSize: 2, textColor: 1, backgroundColor },
+      zones: [
+        { id: 0, enabled: true, timeZone: "Australia/Sydney", label: "SYDNEY", textColor: 1, backgroundColor },
+        { id: 1, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
+        { id: 2, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
+        { id: 3, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
+      ],
+      slots: [
+        { id: 0, hour: 8, minute: 0, enabled: true },
+        { id: 1, hour: 12, minute: 0, enabled: true },
+        { id: 2, hour: 18, minute: 0, enabled: true },
+        { id: 3, hour: 22, minute: 0, enabled: true },
+      ],
+    });
     require(indexPath);
     handlers.webviewclosed({
-      response: encodeURIComponent(JSON.stringify({
-        action: "save_settings",
-        appearance: "auto",
-        display: { horizontal: 1, vertical: 1, fontSize: 2, textColor: 1, backgroundColor: 9 },
-        zones: [
-          { id: 0, enabled: true, timeZone: "Australia/Sydney", label: "SYDNEY", textColor: 1, backgroundColor: 9 },
-          { id: 1, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
-          { id: 2, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
-          { id: 3, enabled: false, timeZone: "UTC", label: "UTC", textColor: 1, backgroundColor: 10 },
-        ],
-        slots: [
-          { id: 0, hour: 8, minute: 0, enabled: true },
-          { id: 1, hour: 12, minute: 0, enabled: true },
-          { id: 2, hour: 18, minute: 0, enabled: true },
-          { id: 3, hour: 22, minute: 0, enabled: true },
-        ],
-      })),
+      response: encodeURIComponent(JSON.stringify(response(9))),
     });
 
     assert.equal(settingsAttempts, 1);
     assert.match(JSON.parse(stored).warning, /retry/i);
     assert.equal(scheduled[0].delay, 1_000);
 
+    handlers.webviewclosed({
+      response: encodeURIComponent(JSON.stringify(response(17))),
+    });
+
+    assert.equal(settingsAttempts, 2);
+    assert.equal(sent[1].TZ_0_BACKGROUND_COLOR, 17);
+    assert.equal(sent.at(-1).TYPE, 7);
+
     scheduled[0].callback();
 
     assert.equal(settingsAttempts, 2);
-    assert.equal(sent[1].TZ_0_TEXT_COLOR, 1);
-    assert.equal(sent[1].TZ_0_BACKGROUND_COLOR, 9);
-    assert.equal(sent.at(-1).TYPE, 7);
     assert.equal(JSON.parse(stored).warning, null);
-    assert.equal(JSON.parse(stored).pendingSettings.zones[0].backgroundColor, 9);
+    assert.equal(
+      JSON.parse(stored).pendingSettings.response.zones[0].backgroundColor,
+      17,
+    );
   } finally {
     delete require.cache[indexPath];
     delete global.localStorage;

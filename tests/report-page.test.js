@@ -196,6 +196,7 @@ test("exports only history selected for clearing", () => {
     events: [
       { installId: "watch", sequence: 1, slotId: 0, scheduledAt: now - 8 * day, localDay: "2026-07-31", outcome: "no_response", answeredAt: null },
       { installId: "watch", sequence: 2, slotId: 0, scheduledAt: now - 6 * day, localDay: "2026-08-02", outcome: "taken", answeredAt: now - 6 * day + 1 },
+      { installId: "watch", sequence: 3, slotId: 0, scheduledAt: now + day, localDay: "2026-08-09", outcome: "no_response", answeredAt: null },
     ],
     settings: { zones: zones(), slots: [] },
     lastSyncAt: now,
@@ -241,4 +242,12 @@ test("exports only history selected for clearing", () => {
   assert.equal(link.download.startsWith("number-watch-history-"), true);
   assert.deepEqual(exported.events.map((event) => event.sequence), [1]);
   assert.equal(exported.keptDays, 7);
+
+  elements["history-retention"].value = "all";
+  fileContent = null;
+  context.saveClearedRecords();
+
+  const allExported = JSON.parse(fileContent);
+  assert.deepEqual(allExported.events.map((event) => event.sequence), [1, 2, 3]);
+  assert.equal(allExported.keptDays, 0);
 });
