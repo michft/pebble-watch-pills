@@ -2,6 +2,11 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.12] - 2026-09-16
+
+- Reissue the optional two-row Digits display with the persistence-failure
+  handling from v0.2.11. Watch behaviour and settings remain unchanged.
+
 ## [0.2.11] - 2026-09-15
 
 - Add an optional Digits watchface mode showing hours 0–23 on the top row and
