@@ -1,14 +1,14 @@
 # Number Watch with Pill Reminders
 
 Pebble Time 2 (`emery`) watchapp displaying a named Home timezone plus up to
-three enabled travel timezones as lowercase English number words. Up to four
-pill reminders interrupt the time display when due.
+three enabled travel timezones as lowercase English number words or digits.
+Up to four pill reminders interrupt the time display when due.
 
 See [Using the app](docs/using-the-app.md) for current controls, phone
 synchronisation, and troubleshooting.
 
-Time uses one word per line. At Large font size, `seventeen` exceeds the
-available line width and splits at its spoken syllable boundary:
+Words mode (default) uses one word per line. At Large font size, `seventeen`
+exceeds the available line width and splits at its spoken syllable boundary:
 
 ```text
 eight       twelve
@@ -16,9 +16,14 @@ seven       twenty
 -teen       seven
 ```
 
-Watch follows its 12/24-hour system preference, updates every minute, speaks
-minutes one through nine as `o' one` through `o' nine`, and omits minutes at
-`:00`.
+Words mode follows the watch's 12/24-hour system preference, updates every
+minute, speaks minutes one through nine as `o' one` through `o' nine`, and omits
+minutes at `:00`.
+
+Optional Digits mode always shows hours (0–23) on the top row and
+minutes (0–59) on the bottom row, without leading zeroes. Both rows remain
+visible at midnight and exact hours. Fonts, alignment, colours, timezone
+switching, and reminders work the same in both modes.
 
 ## Watch controls
 
@@ -43,7 +48,8 @@ in the rePebble phone app. Phone page also controls:
 - up to four pill reminder times and enabled state
 - Home plus up to three checked named timezones, each with label and one of 20 vivid colour schemes
 - phone appearance: Auto, Light (black on white), or Dark (white on black)
-- time format follows the watch's 12/24-hour system setting
+- time display: Words (default) or Digits; Words and reminder times follow the
+  watch's 12/24-hour system setting, while Digits always use 24-hour time
 - horizontal alignment: left, centre, right
 - vertical alignment: top, middle, bottom
 - font size: small, medium, large
@@ -185,7 +191,7 @@ upstream code or assets copied.
 
 ## Limits
 
-- English number words only.
+- Word display supports English only.
 - Pebble Time 2 (`emery`) only.
 - Home-calendar daily reminder schedule; up to four slots.
 - Watch receives the current and next offset for offline timezone use; phone
