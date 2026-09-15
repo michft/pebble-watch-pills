@@ -2,6 +2,16 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.11] - 2026-09-15
+
+- Add an optional Digits watchface mode showing hours 0–23 on the top row and
+  minutes 0–59 on the bottom row, without leading zeroes.
+- Save the display choice across watch restarts and confirm it during phone
+  settings sync. Words remains the default; fonts, alignment, colours,
+  timezones, and reminders keep their existing behaviour.
+- Keep the persisted digit mode in watch snapshots when saving that choice
+  fails, so the phone retains the requested settings as pending.
+
 ## [0.2.10] - 2026-08-08
 
 - Make up to three serialized phone-to-watch settings delivery attempts, ignore

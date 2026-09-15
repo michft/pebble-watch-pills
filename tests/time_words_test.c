@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 static void expect_time(
@@ -62,6 +63,25 @@ static void expect_large_font_line_budget(void) {
 }
 
 int main(void) {
+  for (int hour = 0; hour < 24; hour++) {
+    for (int minute = 0; minute < 60; minute++) {
+      char digits[6];
+      char expected[6];
+      snprintf(expected, sizeof(expected), "%d\n%d", hour, minute);
+      assert(time_digits_format_lines(hour, minute, digits, sizeof(digits)));
+      assert(strcmp(digits, expected) == 0);
+    }
+  }
+  char digits[6] = "bad";
+  assert(!time_digits_format_lines(-1, 0, digits, sizeof(digits)));
+  assert(!time_digits_format_lines(24, 0, digits, sizeof(digits)));
+  assert(!time_digits_format_lines(0, -1, digits, sizeof(digits)));
+  assert(!time_digits_format_lines(0, 60, digits, sizeof(digits)));
+  assert(!time_digits_format_lines(23, 59, digits, 5));
+  assert(digits[0] == '\0');
+  assert(!time_digits_format_lines(0, 0, digits, 0));
+  assert(!time_digits_format_lines(0, 0, NULL, sizeof(digits)));
+
   expect_time(8, 17, false, "eight seventeen");
   expect_time(12, 30, false, "twelve thirty");
   expect_time(13, 6, false, "one o' six");

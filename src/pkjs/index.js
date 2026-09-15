@@ -144,6 +144,7 @@ function settingsResponseValid(response, state) {
     || !integerInRange(response.display.horizontal, 0, 2)
     || !integerInRange(response.display.vertical, 0, 2)
     || !integerInRange(response.display.fontSize, 0, 2)
+    || (response.display.useDigits !== undefined && typeof response.display.useDigits !== "boolean")
     || !colorSchemes.colorIdValid(response.display.textColor)
     || !colorSchemes.colorIdValid(response.display.backgroundColor)
     || ["auto", "light", "dark"].indexOf(response.appearance) === -1
@@ -209,6 +210,7 @@ function settingsSnapshotMatches(payload, response, zoneFingerprints) {
     || !Array.isArray(zoneFingerprints)
     || zoneFingerprints.length !== TIMEZONE_COUNT
   ) return false;
+  if ((payload.display.useDigits === true) !== (response.display.useDigits === true)) return false;
   var displayKeys = ["horizontal", "vertical", "fontSize", "textColor", "backgroundColor"];
   for (var displayIndex = 0; displayIndex < displayKeys.length; displayIndex += 1) {
     var displayKey = displayKeys[displayIndex];
@@ -373,6 +375,7 @@ function sendSettingsAttempt(pending, deliveryAttempt) {
   message.H_ALIGN = response.display.horizontal;
   message.V_ALIGN = response.display.vertical;
   message.FONT_SIZE = response.display.fontSize;
+  message.USE_DIGITS = response.display.useDigits === true ? 1 : 0;
   message.TEXT_COLOR = response.display.textColor;
   message.BACKGROUND_COLOR = response.display.backgroundColor;
   message.USE_LOCAL_TIME = 1;

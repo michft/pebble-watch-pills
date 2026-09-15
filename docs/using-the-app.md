@@ -1,8 +1,17 @@
 # Using the app
 
+## Choose words or digits
+
+Open Number Watch settings in the rePebble phone app. Under **Watchface**,
+choose **Time display → Words** (default) or **Digits**, then **Save settings**.
+Digits show hours 0–23 on the top row and minutes 0–59 on the bottom row,
+without leading zeroes: 08:06 appears as `8` above `6`, midnight as `0` above `0`.
+Digits always use 24-hour time. Words and reminder times keep following the
+watch's 12/24-hour preference. Other settings and controls stay the same.
+
 ## Configure reminders
 
-1. Hold Down from the word-time display to open **Configuration**.
+1. Hold Down from the time display to open **Configuration**.
 2. Choose **Reminders** with Up/Down, then hold Down.
 3. Choose a reminder or **+ Add reminder**, then hold Down.
 4. Use Up/Down to choose Enabled, Hour, Minute, or Save.
@@ -58,7 +67,7 @@ The buttons work only while the reminder alert is visible. The alert vibrates
 every 30 seconds for five minutes. If it expires without Up, it
 remains **Not taken**.
 
-After Up, Number Watch returns to its word-time display. The watch saves Taken
+After Up, Number Watch returns to its time display. The watch saves Taken
 before returning.
 
 ## See the acknowledgement on the phone
@@ -99,12 +108,12 @@ newer than the cutoff remain available.
 Check these in order:
 
 1. Confirm Up was pressed while **TAKE PILL** was still on screen.
-2. Confirm the watch returned to the word-time display.
+2. Confirm the watch returned to the time display.
 3. Reopen phone settings and check that **Last synced** advances.
 4. Confirm the watch is connected in rePebble.
 5. Do not clear report history while diagnosing. It deletes the selected
    phone-local records and excludes them from later watch resyncs.
 
-If the watch did not return to the word-time display after Up, the
+If the watch did not return to the time display after Up, the
 response was not completed. If it returned but the phone did not update after
 synchronisation, the failure is in watch-to-phone synchronisation.

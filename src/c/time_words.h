@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/** Formats 24-hour digits on two rows, without leading zeroes: 08:06 -> "8\n6". */
+bool time_digits_format_lines(int hour, int minute, char *buffer, size_t buffer_size);
+
 /**
  * Formats a local time as lowercase number words.
  *

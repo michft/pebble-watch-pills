@@ -3,6 +3,18 @@
 #include <stdio.h>
 #include <string.h>
 
+bool time_digits_format_lines(int hour, int minute, char *buffer, size_t buffer_size) {
+  if (buffer == NULL || buffer_size == 0) return false;
+  buffer[0] = '\0';
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return false;
+  int written = snprintf(buffer, buffer_size, "%d\n%d", hour, minute);
+  if (written < 0 || (size_t)written >= buffer_size) {
+    buffer[0] = '\0';
+    return false;
+  }
+  return true;
+}
+
 static bool write_number(int value, char *buffer, size_t buffer_size) {
   static const char *const small_numbers[] = {
     "zero",

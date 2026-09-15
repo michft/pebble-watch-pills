@@ -9,6 +9,7 @@ extern uint32_t MESSAGE_KEY_PAYLOAD;
 extern uint32_t MESSAGE_KEY_H_ALIGN;
 extern uint32_t MESSAGE_KEY_V_ALIGN;
 extern uint32_t MESSAGE_KEY_FONT_SIZE;
+extern uint32_t MESSAGE_KEY_USE_DIGITS;
 extern uint32_t MESSAGE_KEY_TEXT_COLOR;
 extern uint32_t MESSAGE_KEY_BACKGROUND_COLOR;
 extern uint32_t MESSAGE_KEY_USE_LOCAL_TIME;
@@ -69,6 +70,7 @@ extern uint32_t MESSAGE_KEY_SLOT_3_ENABLED;
 #define PERSIST_KEY_META 1
 #define PERSIST_KEY_EVENTS_BASE 2
 #define PERSIST_KEY_DISPLAY_SETTINGS 100
+#define PERSIST_KEY_USE_DIGITS 101
 #define DISPLAY_SETTINGS_V1_VERSION 1
 #define DISPLAY_SETTINGS_V2_VERSION 2
 #define DISPLAY_SETTINGS_V3_VERSION 3
@@ -225,6 +227,7 @@ static TextLayer *s_rows[SLOT_COUNT];
 static TextLayer *s_footer;
 static AppState s_state;
 static DisplaySettings s_display_settings;
+static bool s_use_digits;
 static Screen s_screen = SCREEN_WATCHFACE;
 static uint8_t s_selected_slot;
 static uint8_t s_edit_field;
@@ -525,7 +528,11 @@ static DisplaySettings migrated_display_settings_v3(const DisplaySettingsV3 *old
   return settings;
 }
 
-static void save_display_settings(void) {
+static int save_display_settings(void) {
+  int digit_status = persist_write_bool(PERSIST_KEY_USE_DIGITS, s_use_digits);
+  if (digit_status < 0) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Digit setting persistence failed");
+  }
   int written = persist_write_data(
     PERSIST_KEY_DISPLAY_SETTINGS,
     &s_display_settings,
@@ -534,9 +541,12 @@ static void save_display_settings(void) {
   if (written != (int)sizeof(s_display_settings)) {
     APP_LOG(APP_LOG_LEVEL_ERROR, "Display settings persistence failed: %d", written);
   }
+  return digit_status;
 }
 
 static void load_display_settings(void) {
+  // Separate key preserves existing display settings without a schema migration.
+  s_use_digits = persist_read_bool(PERSIST_KEY_USE_DIGITS);
   int stored_size = persist_get_size(PERSIST_KEY_DISPLAY_SETTINGS);
   bool restored = stored_size == (int)sizeof(s_display_settings)
     && persist_read_data(
@@ -721,14 +731,17 @@ static void update_watchface(void) {
   int minute;
   if (
     !current_display_time(&hour, &minute)
-    || !time_words_format_lines(
-    hour,
-    minute,
-    clock_is_24h_style(),
-    s_display_settings.font_size == FONT_LARGE,
-    s_watchface_text,
-    sizeof(s_watchface_text)
-  )) {
+    || !(s_use_digits
+      ? time_digits_format_lines(hour, minute, s_watchface_text, sizeof(s_watchface_text))
+      : time_words_format_lines(
+        hour,
+        minute,
+        clock_is_24h_style(),
+        s_display_settings.font_size == FONT_LARGE,
+        s_watchface_text,
+        sizeof(s_watchface_text)
+      ))
+  ) {
     snprintf(s_watchface_text, sizeof(s_watchface_text), "Time unavailable");
   }
 
@@ -1480,7 +1493,7 @@ static void send_settings_snapshot(void) {
     payload,
     sizeof(payload),
     "{\"installId\":\"%s\",\"revision\":%lu,\"droppedEvents\":%u,\"hour12\":%s,"
-    "\"display\":{\"horizontal\":%u,\"vertical\":%u,\"fontSize\":%u,"
+    "\"display\":{\"horizontal\":%u,\"vertical\":%u,\"fontSize\":%u,\"useDigits\":%s,"
     "\"textColor\":%u,\"backgroundColor\":%u},\"zones\":["
     "{\"id\":0,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
     "{\"id\":1,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
@@ -1497,6 +1510,7 @@ static void send_settings_snapshot(void) {
     s_display_settings.horizontal_alignment,
     s_display_settings.vertical_alignment,
     s_display_settings.font_size,
+    s_use_digits ? "true" : "false",
     s_display_settings.text_color,
     s_display_settings.background_color,
     s_display_settings.zones[0].enabled ? "true" : "false",
@@ -1738,6 +1752,11 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
     }
     display_values[index] = value->value->int32;
   }
+  Tuple *use_digits = dict_find(iterator, MESSAGE_KEY_USE_DIGITS);
+  if (use_digits && (use_digits->value->int32 < 0 || use_digits->value->int32 > 1)) {
+    send_settings_snapshot();
+    return;
+  }
   const uint32_t hour_keys[SLOT_COUNT] = {
     MESSAGE_KEY_SLOT_0_HOUR, MESSAGE_KEY_SLOT_1_HOUR,
     MESSAGE_KEY_SLOT_2_HOUR, MESSAGE_KEY_SLOT_3_HOUR,
@@ -1780,10 +1799,13 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   proposed_display.font_size = (uint8_t)display_values[2];
   proposed_display.text_color = (uint8_t)display_values[3];
   proposed_display.background_color = (uint8_t)display_values[4];
+  s_use_digits = use_digits && use_digits->value->int32 == 1;
   s_display_settings = proposed_display;
   s_active_timezone = 0;
   s_state.settings_revision++;
-  save_display_settings();
+  if (save_display_settings() < 0) {
+    s_use_digits = persist_read_bool(PERSIST_KEY_USE_DIGITS);
+  }
   schedule_next();
   if (s_screen == SCREEN_WATCHFACE) update_watchface();
   send_settings_snapshot();

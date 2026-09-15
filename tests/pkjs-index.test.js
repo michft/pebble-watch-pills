@@ -279,48 +279,101 @@ test("resync preserves the original Home day and selected taken timezone", () =>
   }
 });
 
-test("saving phone settings requests a full watch sync after delivery", () => {
-  const handlers = {};
-  const sent = [];
-  let stored = null;
+for (const useDigits of [undefined, false, true]) {
+  test(`saving phone settings confirms digit mode ${useDigits} after delivery`, () => {
+    const handlers = {};
+    const sent = [];
+    let stored = null;
 
-  global.localStorage = {
-    getItem() {
-      return stored;
-    },
-    setItem(key, value) {
-      if (key === STORAGE_KEY) stored = value;
-    },
-  };
-  global.Pebble = {
-    addEventListener(name, handler) {
-      handlers[name] = handler;
-    },
-    sendAppMessage(message, success) {
-      sent.push({ message, success });
-    },
-  };
+    global.localStorage = {
+      getItem() {
+        return stored;
+      },
+      setItem(key, value) {
+        if (key === STORAGE_KEY) stored = value;
+      },
+    };
+    global.Pebble = {
+      addEventListener(name, handler) {
+        handlers[name] = handler;
+      },
+      sendAppMessage(message, success) {
+        sent.push({ message, success });
+      },
+    };
 
-  const indexPath = require.resolve("../src/pkjs/index.js");
-  delete require.cache[indexPath];
-  try {
-    require(indexPath);
-    handlers.webviewclosed({
-      response: encodeURIComponent(JSON.stringify({
-        action: "save_settings",
-        appearance: "dark",
+    const indexPath = require.resolve("../src/pkjs/index.js");
+    delete require.cache[indexPath];
+    try {
+      require(indexPath);
+      handlers.webviewclosed({
+        response: encodeURIComponent(JSON.stringify({
+          action: "save_settings",
+          appearance: "dark",
+          display: {
+            horizontal: 1,
+            vertical: 1,
+            fontSize: 2,
+            useDigits,
+            textColor: 12,
+            backgroundColor: 19,
+          },
+          zones: [
+            { id: 0, enabled: true, timeZone: "Australia/Sydney", label: "SYDNEY", textColor: 12, backgroundColor: 19 },
+            { id: 1, enabled: true, timeZone: "Europe/London", label: "LONDON", textColor: 1, backgroundColor: 10 },
+            { id: 2, enabled: true, timeZone: "Asia/Tokyo", label: "TOKYO", textColor: 1, backgroundColor: 13 },
+            { id: 3, enabled: false, timeZone: "America/New_York", label: "NEW YORK", textColor: 1, backgroundColor: 17 },
+          ],
+          slots: [
+            { id: 0, hour: 8, minute: 0, enabled: true },
+            { id: 1, hour: 12, minute: 0, enabled: true },
+            { id: 2, hour: 18, minute: 0, enabled: true },
+            { id: 3, hour: 22, minute: 0, enabled: true },
+          ],
+        })),
+      });
+
+      assert.equal(sent.length, 1);
+      assert.equal(sent[0].message.TYPE, 8);
+      assert.equal(sent[0].message.USE_DIGITS, useDigits === true ? 1 : 0);
+      assert.equal(sent[0].message.TZ_0_ENABLED, 1);
+      assert.equal(sent[0].message.TZ_0_LABEL, "SYDNEY");
+      assert.equal(sent[0].message.TZ_0_TEXT_COLOR, 12);
+      assert.equal(sent[0].message.TZ_0_BACKGROUND_COLOR, 19);
+      assert.equal(sent[0].message.TZ_1_LABEL, "LONDON");
+      assert.equal(sent[0].message.TZ_2_LABEL, "TOKYO");
+      assert.equal(sent[0].message.TZ_3_ENABLED, 0);
+      const zone = timezoneSnapshot("Australia/Sydney", Date.now());
+      assert.equal(sent[0].message.TZ_0_UTC_OFFSET_MINUTES, zone.offsetMinutes);
+      assert.equal(sent[0].message.TZ_0_TRANSITION_AT, zone.transitionAt);
+      assert.equal(
+        sent[0].message.TZ_0_TRANSITION_OFFSET_MINUTES,
+        zone.transitionOffsetMinutes,
+      );
+      assert.equal(JSON.parse(stored).appearance, "dark");
+      sent[0].success();
+      assert.equal(sent.length, 2);
+      assert.equal(sent[1].message.TYPE, 7);
+      const fingerprints = JSON.parse(stored).pendingSettings.zoneFingerprints;
+
+      const snapshot = (homeTextColor, homeBackgroundColor, digits = useDigits === true) => ({
+        installId: "watch",
+        revision: 2,
+        droppedEvents: 0,
+        hour12: false,
         display: {
           horizontal: 1,
           vertical: 1,
           fontSize: 2,
-          textColor: 12,
-          backgroundColor: 19,
+          useDigits: digits,
+          textColor: homeTextColor,
+          backgroundColor: homeBackgroundColor,
         },
         zones: [
-          { id: 0, enabled: true, timeZone: "Australia/Sydney", label: "SYDNEY", textColor: 12, backgroundColor: 19 },
-          { id: 1, enabled: true, timeZone: "Europe/London", label: "LONDON", textColor: 1, backgroundColor: 10 },
-          { id: 2, enabled: true, timeZone: "Asia/Tokyo", label: "TOKYO", textColor: 1, backgroundColor: 13 },
-          { id: 3, enabled: false, timeZone: "America/New_York", label: "NEW YORK", textColor: 1, backgroundColor: 17 },
+          { id: 0, enabled: true, label: "SYDNEY", textColor: homeTextColor, backgroundColor: homeBackgroundColor, timezoneFingerprint: fingerprints[0] },
+          { id: 1, enabled: true, label: "LONDON", textColor: 1, backgroundColor: 10, timezoneFingerprint: fingerprints[1] },
+          { id: 2, enabled: true, label: "TOKYO", textColor: 1, backgroundColor: 13, timezoneFingerprint: fingerprints[2] },
+          { id: 3, enabled: false, label: "NEW YORK", textColor: 1, backgroundColor: 17, timezoneFingerprint: fingerprints[3] },
         ],
         slots: [
           { id: 0, hour: 8, minute: 0, enabled: true },
@@ -328,78 +381,53 @@ test("saving phone settings requests a full watch sync after delivery", () => {
           { id: 2, hour: 18, minute: 0, enabled: true },
           { id: 3, hour: 22, minute: 0, enabled: true },
         ],
-      })),
-    });
+      });
+      handlers.appmessage({
+        payload: { TYPE: 5, PAYLOAD: JSON.stringify(snapshot(5, 1)) },
+      });
+      let state = JSON.parse(stored);
+      assert.equal(state.settings.zones[0].textColor, 12);
+      assert.equal(state.settings.zones[0].backgroundColor, 19);
+      assert.match(state.warning, /did not apply/);
 
-    assert.equal(sent.length, 1);
-    assert.equal(sent[0].message.TYPE, 8);
-    assert.equal(sent[0].message.TZ_0_ENABLED, 1);
-    assert.equal(sent[0].message.TZ_0_LABEL, "SYDNEY");
-    assert.equal(sent[0].message.TZ_0_TEXT_COLOR, 12);
-    assert.equal(sent[0].message.TZ_0_BACKGROUND_COLOR, 19);
-    assert.equal(sent[0].message.TZ_1_LABEL, "LONDON");
-    assert.equal(sent[0].message.TZ_2_LABEL, "TOKYO");
-    assert.equal(sent[0].message.TZ_3_ENABLED, 0);
-    const zone = timezoneSnapshot("Australia/Sydney", Date.now());
-    assert.equal(sent[0].message.TZ_0_UTC_OFFSET_MINUTES, zone.offsetMinutes);
-    assert.equal(sent[0].message.TZ_0_TRANSITION_AT, zone.transitionAt);
-    assert.equal(
-      sent[0].message.TZ_0_TRANSITION_OFFSET_MINUTES,
-      zone.transitionOffsetMinutes,
-    );
-    assert.equal(JSON.parse(stored).appearance, "dark");
-    sent[0].success();
-    assert.equal(sent.length, 2);
-    assert.equal(sent[1].message.TYPE, 7);
-    const fingerprints = JSON.parse(stored).pendingSettings.zoneFingerprints;
+      handlers.appmessage({
+        payload: { TYPE: 5, PAYLOAD: JSON.stringify(snapshot(12, 19, useDigits !== true)) },
+      });
+      state = JSON.parse(stored);
+      assert.ok(state.pendingSettings);
+      assert.match(state.warning, /did not apply/);
 
-    const snapshot = (homeTextColor, homeBackgroundColor) => ({
-      installId: "watch",
-      revision: 2,
-      droppedEvents: 0,
-      hour12: false,
-      display: {
-        horizontal: 1,
-        vertical: 1,
-        fontSize: 2,
-        textColor: homeTextColor,
-        backgroundColor: homeBackgroundColor,
-      },
-      zones: [
-        { id: 0, enabled: true, label: "SYDNEY", textColor: homeTextColor, backgroundColor: homeBackgroundColor, timezoneFingerprint: fingerprints[0] },
-        { id: 1, enabled: true, label: "LONDON", textColor: 1, backgroundColor: 10, timezoneFingerprint: fingerprints[1] },
-        { id: 2, enabled: true, label: "TOKYO", textColor: 1, backgroundColor: 13, timezoneFingerprint: fingerprints[2] },
-        { id: 3, enabled: false, label: "NEW YORK", textColor: 1, backgroundColor: 17, timezoneFingerprint: fingerprints[3] },
-      ],
-      slots: [
-        { id: 0, hour: 8, minute: 0, enabled: true },
-        { id: 1, hour: 12, minute: 0, enabled: true },
-        { id: 2, hour: 18, minute: 0, enabled: true },
-        { id: 3, hour: 22, minute: 0, enabled: true },
-      ],
-    });
-    handlers.appmessage({
-      payload: { TYPE: 5, PAYLOAD: JSON.stringify(snapshot(5, 1)) },
-    });
-    let state = JSON.parse(stored);
-    assert.equal(state.settings.zones[0].textColor, 12);
-    assert.equal(state.settings.zones[0].backgroundColor, 19);
-    assert.match(state.warning, /did not apply/);
+      handlers.appmessage({
+        payload: { TYPE: 5, PAYLOAD: JSON.stringify(snapshot(12, 19)) },
+      });
+      state = JSON.parse(stored);
+      assert.equal(state.pendingSettings, null);
+      assert.equal(state.settings.zones[0].textColor, 12);
+      assert.equal(state.settings.zones[0].backgroundColor, 19);
+      assert.equal(state.warning, null);
+      assert.equal(state.settings.display.useDigits, useDigits === true);
 
-    handlers.appmessage({
-      payload: { TYPE: 5, PAYLOAD: JSON.stringify(snapshot(12, 19)) },
-    });
-    state = JSON.parse(stored);
-    assert.equal(state.pendingSettings, null);
-    assert.equal(state.settings.zones[0].textColor, 12);
-    assert.equal(state.settings.zones[0].backgroundColor, 19);
-    assert.equal(state.warning, null);
-  } finally {
-    delete require.cache[indexPath];
-    delete global.localStorage;
-    delete global.Pebble;
-  }
-});
+      for (const invalid of [1, "true", null, {}]) {
+        const before = sent.length;
+        handlers.webviewclosed({
+          response: encodeURIComponent(JSON.stringify({
+            action: "save_settings",
+            appearance: "dark",
+            display: { ...state.settings.display, useDigits: invalid },
+            zones: state.settings.zones,
+            slots: state.settings.slots,
+          })),
+        });
+        assert.equal(sent.length, before);
+        assert.equal(JSON.parse(stored).settings.display.useDigits, useDigits === true);
+      }
+    } finally {
+      delete require.cache[indexPath];
+      delete global.localStorage;
+      delete global.Pebble;
+    }
+  });
+}
 
 test("keeps pending settings when only the timezone was not applied", () => {
   const handlers = {};

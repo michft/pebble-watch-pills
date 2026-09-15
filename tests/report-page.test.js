@@ -67,7 +67,8 @@ test("renders checked-only settings and selectable taken timezone", () => {
   assert.match(html, /updateSchemePreview\(p\)/);
   assert.doesNotMatch(html, /id=zone-0-text-color/);
   assert.doesNotMatch(html, /id=zone-0-background-color/);
-  assert.match(html, /Time format follows the watch's 12\/24-hour system setting/);
+  assert.match(html, /Words and reminder times follow the watch's 12\/24-hour system setting/);
+  assert.match(html, /id=use-digits><option value=0 selected>Words/);
   assert.match(html, /id=slot-row-3 hidden/);
   assert.match(html, /\+ Add reminder/);
   assert.match(html, /id=zone-row-0><h3>Home — SYDNEY/);
@@ -98,6 +99,52 @@ test("renders checked-only settings and selectable taken timezone", () => {
   assert.match(html, /Save records to file/);
   assert.match(html, /new Blob\(\[content\]/);
   assert.match(html, /retentionDays:selection\.days/);
+});
+
+test("saves and reopens the digit option without changing other settings", () => {
+  const state = { events: [], settings: null, droppedEvents: 0 };
+  const html = buildReportPage(state);
+  const script = html.match(/<script>([\s\S]+)<\/script>/)[1];
+  const elements = {
+    "use-digits": { value: "1" },
+    appearance: { value: "dark" },
+    horizontal: { value: "2" },
+    vertical: { value: "0" },
+    "font-size": { value: "1" },
+  };
+  zones().forEach((zone, index) => {
+    elements[`slot-${index}-time`] = { value: `${8 + index * 4}:00` };
+    elements[`slot-${index}-enabled`] = { checked: index < 2 };
+    elements[`zone-${index}-label`] = { value: zone.label };
+    elements[`zone-${index}-time-zone`] = { value: zone.timeZone };
+    elements[`zone-${index}-enabled`] = { checked: zone.enabled };
+    elements[`zone-${index}-scheme`] = {
+      value: `${zone.textColor},${zone.backgroundColor}`,
+      selectedIndex: 0,
+      options: [{ getAttribute() { return "#000000"; } }],
+    };
+    elements[`zone-${index}-scheme-preview`] = { style: {} };
+  });
+  const context = {
+    document: { getElementById(id) { return elements[id]; } },
+    location: { href: "" },
+    alert(message) { throw new Error(message); },
+  };
+  vm.runInNewContext(script, context);
+  for (const useDigits of [true, false]) {
+    elements["use-digits"].value = useDigits ? "1" : "0";
+    context.saveSettings();
+    const saved = JSON.parse(decodeURIComponent(context.location.href.split("#")[1]));
+    assert.equal(saved.action, "save_settings");
+    assert.deepEqual(saved.display, {
+      useDigits, horizontal: 2, vertical: 0, fontSize: 1, textColor: 5, backgroundColor: 1,
+    });
+    assert.deepEqual(saved.zones, zones());
+    assert.equal(saved.slots.length, 4);
+    assert.equal(saved.slots[0].hour, 8);
+    const reopened = buildReportPage({ ...state, settings: saved });
+    assert.match(reopened, new RegExp(`<option value=${useDigits ? 1 : 0} selected>${useDigits ? "Digits" : "Words"}`));
+  }
 });
 
 test("deduplicates one expected pill per Home day and slot", () => {
