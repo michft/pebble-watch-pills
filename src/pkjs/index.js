@@ -159,6 +159,7 @@ function settingsResponseValid(response, state) {
       !zone
       || zone.id !== zoneIndex
       || typeof zone.enabled !== "boolean"
+      || (zone.useDigits !== undefined && typeof zone.useDigits !== "boolean")
       || zoneIndex === 0 && !zone.enabled
       || typeof zone.timeZone !== "string"
       || zone.timeZone.length < 1
@@ -216,12 +217,14 @@ function settingsSnapshotMatches(payload, response, zoneFingerprints) {
     var displayKey = displayKeys[displayIndex];
     if (payload.display[displayKey] !== response.display[displayKey]) return false;
   }
+  var requestedZones = normaliseZones(response);
   for (var zoneIndex = 0; zoneIndex < TIMEZONE_COUNT; zoneIndex += 1) {
     var watchZone = payload.zones[zoneIndex];
-    var requestedZone = response.zones[zoneIndex];
+    var requestedZone = requestedZones[zoneIndex];
     if (
       !watchZone
       || watchZone.enabled !== requestedZone.enabled
+      || watchZone.useDigits !== requestedZone.useDigits
       || watchZone.label !== requestedZone.label
       || watchZone.textColor !== requestedZone.textColor
       || watchZone.backgroundColor !== requestedZone.backgroundColor
@@ -376,6 +379,9 @@ function sendSettingsAttempt(pending, deliveryAttempt) {
   message.V_ALIGN = response.display.vertical;
   message.FONT_SIZE = response.display.fontSize;
   message.USE_DIGITS = response.display.useDigits === true ? 1 : 0;
+  message.TZ_DIGITS_MASK = normaliseZones(response).reduce(function (mask, zone, index) {
+    return mask | (zone.useDigits ? 1 << index : 0);
+  }, 0);
   message.TEXT_COLOR = response.display.textColor;
   message.BACKGROUND_COLOR = response.display.backgroundColor;
   message.USE_LOCAL_TIME = 1;
@@ -577,7 +583,7 @@ function handleSettings(payload) {
     ? payload.zones
     : priorZones;
   payload.zones = watchZones.map(function (zone, index) {
-    var normalised = normaliseZoneSettings(zone, index);
+    var normalised = normaliseZoneSettings(zone, index, payload.display && payload.display.useDigits);
     normalised.timeZone = priorZones[index].timeZone;
     normalised.timezoneFingerprint = Number.isInteger(zone.timezoneFingerprint)
       ? zone.timezoneFingerprint

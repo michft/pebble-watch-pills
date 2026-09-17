@@ -3,6 +3,7 @@ const test = require("node:test");
 const {
   dateKeyAt,
   labelForTimeZone,
+  normaliseZones,
   offsetMinutesAt,
   supportedTimeZones,
   timeLabelAt,
@@ -63,5 +64,21 @@ test("rejects malformed numeric timezone parts", () => {
     assert.equal(zonedParts("Test/Malformed", 0), null);
   } finally {
     Intl.DateTimeFormat = originalDateTimeFormat;
+  }
+});
+
+
+test("migrates the shared mode while preserving explicit per-timezone choices", () => {
+  for (const useDigits of [false, true]) {
+    const zones = Array.from({ length: 4 }, (_, id) => ({ id, enabled: id < 3 }));
+    assert.deepEqual(normaliseZones({ display: { useDigits }, zones })
+      .map((zone) => zone.useDigits), Array(4).fill(useDigits));
+    assert.deepEqual(normaliseZones({ display: { useDigits } })
+      .map((zone) => zone.useDigits), Array(4).fill(useDigits));
+    zones[0].useDigits = false;
+    zones[1].useDigits = true;
+    zones[2].useDigits = false;
+    assert.deepEqual(normaliseZones({ display: { useDigits }, zones })
+      .map((zone) => zone.useDigits), [false, true, false, useDigits]);
   }
 });

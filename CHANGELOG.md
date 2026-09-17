@@ -2,6 +2,19 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.14] - 2026-09-17
+
+- Choose Words or Digits independently for each timezone, including multiple
+  entries for the same timezone: Sydney words, Sydney digits, and UTC words.
+- Preserve the previous shared display mode when upgrading. Save each entry's
+  mode across watch restarts and confirm it during phone settings sync.
+- Skip version 0.2.13.
+
+## [0.2.12] - 2026-09-16
+
+- Reissue the optional two-row Digits display with the persistence-failure
+  handling from v0.2.11. Watch behaviour and settings remain unchanged.
+
 ## [0.2.11] - 2026-09-15
 
 - Add an optional Digits watchface mode showing hours 0–23 on the top row and

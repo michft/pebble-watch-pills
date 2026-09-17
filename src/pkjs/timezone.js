@@ -101,6 +101,7 @@ function defaultZoneSettings(index) {
   return {
     id: index,
     enabled: index === 0,
+    useDigits: false,
     timeZone: timeZone,
     label: labelForTimeZone(timeZone),
     textColor: index === 0 ? 0 : 1,
@@ -111,12 +112,15 @@ function defaultZoneSettings(index) {
   };
 }
 
-function normaliseZoneSettings(value, index) {
+function normaliseZoneSettings(value, index, legacyUseDigits) {
   var fallback = defaultZoneSettings(index);
   var candidate = value || {};
   return {
     id: index,
     enabled: index === 0 || candidate.enabled === true,
+    useDigits: typeof candidate.useDigits === "boolean"
+      ? candidate.useDigits
+      : legacyUseDigits === true,
     timeZone: typeof candidate.timeZone === "string"
       ? candidate.timeZone
       : fallback.timeZone,
@@ -148,7 +152,7 @@ function normaliseZones(settings) {
     && settings.zones.length === TIMEZONE_COUNT
   ) {
     return settings.zones.map(function (zone, index) {
-      return normaliseZoneSettings(zone, index);
+      return normaliseZoneSettings(zone, index, settings.display && settings.display.useDigits);
     });
   }
   var zones = [];
@@ -167,6 +171,9 @@ function normaliseZones(settings) {
       ? settings.display.backgroundColor
       : zones[0].backgroundColor;
   }
+  zones.forEach(function (zone) {
+    zone.useDigits = Boolean(settings && settings.display && settings.display.useDigits);
+  });
   return zones;
 }
 
