@@ -1,7 +1,7 @@
 {
   "name": "number-watch",
   "author": "mt",
-  "version": "0.2.12",
+  "version": "0.2.14",
   "keywords": [
     "pebble-app"
   ],
@@ -88,7 +88,8 @@
       "SLOT_3_HOUR",
       "SLOT_3_MINUTE",
       "SLOT_3_ENABLED",
-      "USE_DIGITS"
+      "USE_DIGITS",
+      "TZ_DIGITS_MASK"
     ],
     "resources": {
       "media": []

@@ -10,6 +10,7 @@ extern uint32_t MESSAGE_KEY_H_ALIGN;
 extern uint32_t MESSAGE_KEY_V_ALIGN;
 extern uint32_t MESSAGE_KEY_FONT_SIZE;
 extern uint32_t MESSAGE_KEY_USE_DIGITS;
+extern uint32_t MESSAGE_KEY_TZ_DIGITS_MASK;
 extern uint32_t MESSAGE_KEY_TEXT_COLOR;
 extern uint32_t MESSAGE_KEY_BACKGROUND_COLOR;
 extern uint32_t MESSAGE_KEY_USE_LOCAL_TIME;
@@ -71,6 +72,7 @@ extern uint32_t MESSAGE_KEY_SLOT_3_ENABLED;
 #define PERSIST_KEY_EVENTS_BASE 2
 #define PERSIST_KEY_DISPLAY_SETTINGS 100
 #define PERSIST_KEY_USE_DIGITS 101
+#define PERSIST_KEY_TZ_DIGITS_MASK 102
 #define DISPLAY_SETTINGS_V1_VERSION 1
 #define DISPLAY_SETTINGS_V2_VERSION 2
 #define DISPLAY_SETTINGS_V3_VERSION 3
@@ -227,7 +229,7 @@ static TextLayer *s_rows[SLOT_COUNT];
 static TextLayer *s_footer;
 static AppState s_state;
 static DisplaySettings s_display_settings;
-static bool s_use_digits;
+static uint8_t s_digits_mask;
 static Screen s_screen = SCREEN_WATCHFACE;
 static uint8_t s_selected_slot;
 static uint8_t s_edit_field;
@@ -528,8 +530,21 @@ static DisplaySettings migrated_display_settings_v3(const DisplaySettingsV3 *old
   return settings;
 }
 
+static uint8_t load_digits_mask(void) {
+  // Migrate the old shared mode to all four timezone slots on first load.
+  if (!persist_exists(PERSIST_KEY_TZ_DIGITS_MASK)) {
+    return persist_read_bool(PERSIST_KEY_USE_DIGITS) ? (1 << TIMEZONE_COUNT) - 1 : 0;
+  }
+  int32_t mask = persist_read_int(PERSIST_KEY_TZ_DIGITS_MASK);
+  return mask >= 0 && mask < (1 << TIMEZONE_COUNT) ? (uint8_t)mask : 0;
+}
+
+static bool timezone_uses_digits(uint8_t index) {
+  return index < TIMEZONE_COUNT && (s_digits_mask & (1 << index)) != 0;
+}
+
 static int save_display_settings(void) {
-  int digit_status = persist_write_bool(PERSIST_KEY_USE_DIGITS, s_use_digits);
+  int digit_status = persist_write_int(PERSIST_KEY_TZ_DIGITS_MASK, s_digits_mask);
   if (digit_status < 0) {
     APP_LOG(APP_LOG_LEVEL_ERROR, "Digit setting persistence failed");
   }
@@ -546,7 +561,7 @@ static int save_display_settings(void) {
 
 static void load_display_settings(void) {
   // Separate key preserves existing display settings without a schema migration.
-  s_use_digits = persist_read_bool(PERSIST_KEY_USE_DIGITS);
+  s_digits_mask = load_digits_mask();
   int stored_size = persist_get_size(PERSIST_KEY_DISPLAY_SETTINGS);
   bool restored = stored_size == (int)sizeof(s_display_settings)
     && persist_read_data(
@@ -731,7 +746,7 @@ static void update_watchface(void) {
   int minute;
   if (
     !current_display_time(&hour, &minute)
-    || !(s_use_digits
+    || !(timezone_uses_digits(s_active_timezone)
       ? time_digits_format_lines(hour, minute, s_watchface_text, sizeof(s_watchface_text))
       : time_words_format_lines(
         hour,
@@ -1486,7 +1501,7 @@ static uint32_t timezone_state_fingerprint(const TimezoneSettings *zone) {
 }
 
 static void send_settings_snapshot(void) {
-  static char payload[900];
+  static char payload[1024];
   char install_id[16];
   snprintf(install_id, sizeof(install_id), "%08lx", (unsigned long)s_state.install_id);
   snprintf(
@@ -1495,10 +1510,10 @@ static void send_settings_snapshot(void) {
     "{\"installId\":\"%s\",\"revision\":%lu,\"droppedEvents\":%u,\"hour12\":%s,"
     "\"display\":{\"horizontal\":%u,\"vertical\":%u,\"fontSize\":%u,\"useDigits\":%s,"
     "\"textColor\":%u,\"backgroundColor\":%u},\"zones\":["
-    "{\"id\":0,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
-    "{\"id\":1,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
-    "{\"id\":2,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
-    "{\"id\":3,\"enabled\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu}],\"slots\":["
+    "{\"id\":0,\"enabled\":%s,\"useDigits\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
+    "{\"id\":1,\"enabled\":%s,\"useDigits\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
+    "{\"id\":2,\"enabled\":%s,\"useDigits\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu},"
+    "{\"id\":3,\"enabled\":%s,\"useDigits\":%s,\"label\":\"%s\",\"textColor\":%u,\"backgroundColor\":%u,\"timezoneFingerprint\":%lu}],\"slots\":["
     "{\"id\":0,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
     "{\"id\":1,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
     "{\"id\":2,\"hour\":%u,\"minute\":%u,\"enabled\":%s},"
@@ -1510,25 +1525,29 @@ static void send_settings_snapshot(void) {
     s_display_settings.horizontal_alignment,
     s_display_settings.vertical_alignment,
     s_display_settings.font_size,
-    s_use_digits ? "true" : "false",
+    timezone_uses_digits(0) ? "true" : "false",
     s_display_settings.text_color,
     s_display_settings.background_color,
     s_display_settings.zones[0].enabled ? "true" : "false",
+    timezone_uses_digits(0) ? "true" : "false",
     s_display_settings.zones[0].label,
     s_display_settings.zones[0].text_color,
     s_display_settings.zones[0].background_color,
     (unsigned long)timezone_state_fingerprint(&s_display_settings.zones[0]),
     s_display_settings.zones[1].enabled ? "true" : "false",
+    timezone_uses_digits(1) ? "true" : "false",
     s_display_settings.zones[1].label,
     s_display_settings.zones[1].text_color,
     s_display_settings.zones[1].background_color,
     (unsigned long)timezone_state_fingerprint(&s_display_settings.zones[1]),
     s_display_settings.zones[2].enabled ? "true" : "false",
+    timezone_uses_digits(2) ? "true" : "false",
     s_display_settings.zones[2].label,
     s_display_settings.zones[2].text_color,
     s_display_settings.zones[2].background_color,
     (unsigned long)timezone_state_fingerprint(&s_display_settings.zones[2]),
     s_display_settings.zones[3].enabled ? "true" : "false",
+    timezone_uses_digits(3) ? "true" : "false",
     s_display_settings.zones[3].label,
     s_display_settings.zones[3].text_color,
     s_display_settings.zones[3].background_color,
@@ -1757,6 +1776,14 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
     send_settings_snapshot();
     return;
   }
+  Tuple *digits_mask = dict_find(iterator, MESSAGE_KEY_TZ_DIGITS_MASK);
+  if (digits_mask && (digits_mask->value->int32 < 0
+      || digits_mask->value->int32 >= (1 << TIMEZONE_COUNT))) {
+    send_settings_snapshot();
+    return;
+  }
+  uint8_t proposed_digits_mask = digits_mask ? (uint8_t)digits_mask->value->int32
+    : use_digits && use_digits->value->int32 == 1 ? (1 << TIMEZONE_COUNT) - 1 : 0;
   const uint32_t hour_keys[SLOT_COUNT] = {
     MESSAGE_KEY_SLOT_0_HOUR, MESSAGE_KEY_SLOT_1_HOUR,
     MESSAGE_KEY_SLOT_2_HOUR, MESSAGE_KEY_SLOT_3_HOUR,
@@ -1799,12 +1826,12 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   proposed_display.font_size = (uint8_t)display_values[2];
   proposed_display.text_color = (uint8_t)display_values[3];
   proposed_display.background_color = (uint8_t)display_values[4];
-  s_use_digits = use_digits && use_digits->value->int32 == 1;
+  s_digits_mask = proposed_digits_mask;
   s_display_settings = proposed_display;
   s_active_timezone = 0;
   s_state.settings_revision++;
   if (save_display_settings() < 0) {
-    s_use_digits = persist_read_bool(PERSIST_KEY_USE_DIGITS);
+    s_digits_mask = load_digits_mask();
   }
   schedule_next();
   if (s_screen == SCREEN_WATCHFACE) update_watchface();

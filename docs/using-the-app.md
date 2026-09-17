@@ -2,8 +2,9 @@
 
 ## Choose words or digits
 
-Open Number Watch settings in the rePebble phone app. Under **Watchface**,
-choose **Time display → Words** (default) or **Digits**, then **Save settings**.
+Open Number Watch settings in the rePebble phone app. Under **Timezones and colour schemes**, choose **Time display → Words**
+(default) or **Digits** separately for each timezone, then **Save settings**.
+Upgrading preserves the previous shared mode for every existing entry.
 Digits show hours 0–23 on the top row and minutes 0–59 on the bottom row,
 without leading zeroes: 08:06 appears as `8` above `6`, midnight as `0` above `0`.
 Digits always use 24-hour time. Words and reminder times keep following the
@@ -26,9 +27,20 @@ Select and Back are intentionally unused for app navigation.
 1. Open Number Watch settings in the rePebble phone app.
 2. Configure **Home** with a named IANA timezone and label.
 3. Use **+ Add timezone** to enable up to three more named timezones.
-4. Choose a label and one of 20 vivid colour schemes for each, then save.
+4. Choose a label, colour scheme, and Words/Digits display for each, then save.
 5. On the watchface, press Up for the previous checked timezone or Down for the
    next. Each change briefly shows that timezone's label.
+
+For Sydney in both formats plus UTC, configure these three entries:
+
+| Entry | Timezone | Label | Time display |
+| --- | --- | --- | --- |
+| Home | `Australia/Sydney` | `SYD TEXT` | Words |
+| Second | `Australia/Sydney` | `SYD NUM` | Digits |
+| Third | `UTC` | `UTC` | Words |
+
+Leave the fourth entry unchecked. Both Sydney entries follow Sydney daylight
+saving automatically; display mode does not change reminder scheduling.
 
 Number Watch starts on Home. Only checked timezones participate in switching.
 You can also hold Down, choose **Timezones**, then hold Down on a label to show

@@ -279,7 +279,9 @@ test("resync preserves the original Home day and selected taken timezone", () =>
   }
 });
 
-for (const useDigits of [undefined, false, true]) {
+for (const useDigits of [undefined, false, true, "mixed"]) {
+  const mixed = useDigits === "mixed";
+  const legacyDigits = mixed ? false : useDigits;
   test(`saving phone settings confirms digit mode ${useDigits} after delivery`, () => {
     const handlers = {};
     const sent = [];
@@ -314,14 +316,14 @@ for (const useDigits of [undefined, false, true]) {
             horizontal: 1,
             vertical: 1,
             fontSize: 2,
-            useDigits,
+            useDigits: legacyDigits,
             textColor: 12,
             backgroundColor: 19,
           },
           zones: [
             { id: 0, enabled: true, timeZone: "Australia/Sydney", label: "SYDNEY", textColor: 12, backgroundColor: 19 },
-            { id: 1, enabled: true, timeZone: "Europe/London", label: "LONDON", textColor: 1, backgroundColor: 10 },
-            { id: 2, enabled: true, timeZone: "Asia/Tokyo", label: "TOKYO", textColor: 1, backgroundColor: 13 },
+            { id: 1, enabled: true, timeZone: mixed ? "Australia/Sydney" : "Europe/London", useDigits: mixed ? true : undefined, label: "LONDON", textColor: 1, backgroundColor: 10 },
+            { id: 2, enabled: true, timeZone: mixed ? "UTC" : "Asia/Tokyo", label: "TOKYO", textColor: 1, backgroundColor: 13 },
             { id: 3, enabled: false, timeZone: "America/New_York", label: "NEW YORK", textColor: 1, backgroundColor: 17 },
           ],
           slots: [
@@ -336,6 +338,7 @@ for (const useDigits of [undefined, false, true]) {
       assert.equal(sent.length, 1);
       assert.equal(sent[0].message.TYPE, 8);
       assert.equal(sent[0].message.USE_DIGITS, useDigits === true ? 1 : 0);
+      assert.equal(sent[0].message.TZ_DIGITS_MASK, mixed ? 2 : legacyDigits === true ? 15 : 0);
       assert.equal(sent[0].message.TZ_0_ENABLED, 1);
       assert.equal(sent[0].message.TZ_0_LABEL, "SYDNEY");
       assert.equal(sent[0].message.TZ_0_TEXT_COLOR, 12);
@@ -371,7 +374,7 @@ for (const useDigits of [undefined, false, true]) {
         },
         zones: [
           { id: 0, enabled: true, label: "SYDNEY", textColor: homeTextColor, backgroundColor: homeBackgroundColor, timezoneFingerprint: fingerprints[0] },
-          { id: 1, enabled: true, label: "LONDON", textColor: 1, backgroundColor: 10, timezoneFingerprint: fingerprints[1] },
+          { id: 1, enabled: true, useDigits: mixed ? true : undefined, label: "LONDON", textColor: 1, backgroundColor: 10, timezoneFingerprint: fingerprints[1] },
           { id: 2, enabled: true, label: "TOKYO", textColor: 1, backgroundColor: 13, timezoneFingerprint: fingerprints[2] },
           { id: 3, enabled: false, label: "NEW YORK", textColor: 1, backgroundColor: 17, timezoneFingerprint: fingerprints[3] },
         ],
@@ -397,6 +400,12 @@ for (const useDigits of [undefined, false, true]) {
       assert.ok(state.pendingSettings);
       assert.match(state.warning, /did not apply/);
 
+      if (mixed) {
+        const wrong = snapshot(12, 19);
+        wrong.zones[1].useDigits = false;
+        handlers.appmessage({ payload: { TYPE: 5, PAYLOAD: JSON.stringify(wrong) } });
+        assert.ok(JSON.parse(stored).pendingSettings);
+      }
       handlers.appmessage({
         payload: { TYPE: 5, PAYLOAD: JSON.stringify(snapshot(12, 19)) },
       });
@@ -407,6 +416,8 @@ for (const useDigits of [undefined, false, true]) {
       assert.equal(state.warning, null);
       assert.equal(state.settings.display.useDigits, useDigits === true);
 
+      assert.deepEqual(state.settings.zones.map((zone) => zone.useDigits),
+        mixed ? [false, true, false, false] : Array(4).fill(legacyDigits === true));
       for (const invalid of [1, "true", null, {}]) {
         const before = sent.length;
         handlers.webviewclosed({
@@ -420,6 +431,14 @@ for (const useDigits of [undefined, false, true]) {
         });
         assert.equal(sent.length, before);
         assert.equal(JSON.parse(stored).settings.display.useDigits, useDigits === true);
+        handlers.webviewclosed({
+          response: encodeURIComponent(JSON.stringify({
+            action: "save_settings", appearance: "dark", display: state.settings.display,
+            zones: state.settings.zones.map((zone, index) => index === 1 ? { ...zone, useDigits: invalid } : zone),
+            slots: state.settings.slots,
+          })),
+        });
+        assert.equal(sent.length, before);
       }
     } finally {
       delete require.cache[indexPath];

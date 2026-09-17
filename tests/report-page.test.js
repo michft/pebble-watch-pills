@@ -68,7 +68,7 @@ test("renders checked-only settings and selectable taken timezone", () => {
   assert.doesNotMatch(html, /id=zone-0-text-color/);
   assert.doesNotMatch(html, /id=zone-0-background-color/);
   assert.match(html, /Words and reminder times follow the watch's 12\/24-hour system setting/);
-  assert.match(html, /id=use-digits><option value=0 selected>Words/);
+  assert.match(html, /id=zone-0-use-digits><option value=0 selected>Words/);
   assert.match(html, /id=slot-row-3 hidden/);
   assert.match(html, /\+ Add reminder/);
   assert.match(html, /id=zone-row-0><h3>Home — SYDNEY/);
@@ -101,18 +101,24 @@ test("renders checked-only settings and selectable taken timezone", () => {
   assert.match(html, /retentionDays:selection\.days/);
 });
 
-test("saves and reopens the digit option without changing other settings", () => {
+test("saves and reopens Sydney words, Sydney digits, and UTC words", () => {
   const state = { events: [], settings: null, droppedEvents: 0 };
   const html = buildReportPage(state);
   const script = html.match(/<script>([\s\S]+)<\/script>/)[1];
   const elements = {
-    "use-digits": { value: "1" },
     appearance: { value: "dark" },
     horizontal: { value: "2" },
     vertical: { value: "0" },
     "font-size": { value: "1" },
   };
-  zones().forEach((zone, index) => {
+  const configuredZones = zones().map((zone, index) => ({
+    ...zone,
+    timeZone: index < 2 ? "Australia/Sydney" : "UTC",
+    label: ["SYD TEXT", "SYD NUM", "UTC", "UNUSED"][index],
+    useDigits: index === 1,
+  }));
+  configuredZones.forEach((zone, index) => {
+    elements[`zone-${index}-use-digits`] = { value: zone.useDigits ? "1" : "0" };
     elements[`slot-${index}-time`] = { value: `${8 + index * 4}:00` };
     elements[`slot-${index}-enabled`] = { checked: index < 2 };
     elements[`zone-${index}-label`] = { value: zone.label };
@@ -132,18 +138,19 @@ test("saves and reopens the digit option without changing other settings", () =>
   };
   vm.runInNewContext(script, context);
   for (const useDigits of [true, false]) {
-    elements["use-digits"].value = useDigits ? "1" : "0";
+    elements["zone-1-use-digits"].value = useDigits ? "1" : "0";
+    configuredZones[1].useDigits = useDigits;
     context.saveSettings();
     const saved = JSON.parse(decodeURIComponent(context.location.href.split("#")[1]));
     assert.equal(saved.action, "save_settings");
     assert.deepEqual(saved.display, {
-      useDigits, horizontal: 2, vertical: 0, fontSize: 1, textColor: 5, backgroundColor: 1,
+      useDigits: false, horizontal: 2, vertical: 0, fontSize: 1, textColor: 5, backgroundColor: 1,
     });
-    assert.deepEqual(saved.zones, zones());
+    assert.deepEqual(saved.zones, configuredZones);
     assert.equal(saved.slots.length, 4);
     assert.equal(saved.slots[0].hour, 8);
     const reopened = buildReportPage({ ...state, settings: saved });
-    assert.match(reopened, new RegExp(`<option value=${useDigits ? 1 : 0} selected>${useDigits ? "Digits" : "Words"}`));
+    assert.match(reopened, new RegExp(`id=zone-1-use-digits>[^<]*${useDigits ? "<option value=0>Words</option>" : ""}<option value=${useDigits ? 1 : 0} selected>${useDigits ? "Digits" : "Words"}`));
   }
 });
 

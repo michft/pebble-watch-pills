@@ -1,7 +1,8 @@
 # Number Watch with Pill Reminders
 
 Pebble Time 2 (`emery`) watchapp displaying a named Home timezone plus up to
-three enabled travel timezones as lowercase English number words or digits.
+three enabled timezone entries, each independently showing lowercase English
+number words or digits. Multiple entries may use the same timezone.
 Up to four pill reminders interrupt the time display when due.
 
 See [Using the app](docs/using-the-app.md) for current controls, phone
@@ -48,7 +49,7 @@ in the rePebble phone app. Phone page also controls:
 - up to four pill reminder times and enabled state
 - Home plus up to three checked named timezones, each with label and one of 20 vivid colour schemes
 - phone appearance: Auto, Light (black on white), or Dark (white on black)
-- time display: Words (default) or Digits; Words and reminder times follow the
+- time display per timezone: Words (default) or Digits; Words and reminder times follow the
   watch's 12/24-hour system setting, while Digits always use 24-hour time
 - horizontal alignment: left, centre, right
 - vertical alignment: top, middle, bottom
