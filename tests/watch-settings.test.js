@@ -31,6 +31,8 @@ ${["SLOT_COUNT", "TIMEZONE_COUNT", "TIMEZONE_LABEL_LENGTH", "COLOR_ID_MAX",
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
 #define APP_LOG(...) ((void)0)
 #define SCREEN_WATCHFACE 0
+#define SCREEN_MAIN 1
+#define SCREEN_TIMEZONES 2
 enum { ${keys.map((key) => `MESSAGE_KEY_${key}`).join(", ")}, KEY_COUNT };
 typedef int WakeupId;
 typedef long time_t;
@@ -89,6 +91,8 @@ static bool times_too_close(ReminderSlot *slots) { (void)slots; return false; }
 static void start_sync(bool show) { (void)show; }
 static void schedule_next(void) {}
 static void update_watchface(void) {}
+static void show_main(const char *note) { (void)note; }
+static void show_timezones(void) {}
 static bool clock_is_24h_style(void) { return true; }
 static uint32_t timezone_state_fingerprint(const TimezoneSettings *zone) {
   (void)zone; return UINT32_MAX;

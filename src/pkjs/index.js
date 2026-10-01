@@ -24,9 +24,11 @@ var MessageType = {
 var zoneRefreshTimer = null;
 var MAX_ZONE_REFRESH_DELAY_MS = 20 * 24 * 60 * 60 * 1000;
 var SETTINGS_RETRY_DELAY_MS = 1000;
+var SETTINGS_CONFIRMATION_DELAY_MS = 5000;
 var SETTINGS_MAX_ATTEMPTS = 3;
 var SETTINGS_WARNING_PREFIX = "Watch settings delivery failed.";
 var settingsDeliveryGeneration = null;
+var settingsRetryTimer = null;
 
 /**
  * Creates an empty phone-side synchronisation state.
@@ -410,6 +412,7 @@ function sendSettingsAttempt(pending, deliveryAttempt) {
         saveState(state);
       }
       scheduleTimezoneRefresh({ transitionAt: update.transitionAt });
+      scheduleSettingsRetry(generation, deliveryAttempt, SETTINGS_CONFIRMATION_DELAY_MS);
       requestSync();
     },
     function () {
@@ -430,19 +433,34 @@ function sendSettingsAttempt(pending, deliveryAttempt) {
         : SETTINGS_WARNING_PREFIX + " Reopen settings with the watch connected.";
       saveState(state);
       if (deliveryAttempt < SETTINGS_MAX_ATTEMPTS) {
-        setTimeout(function () {
-          var retryState = loadState();
-          if (
-            settingsDeliveryGeneration !== null
-            || !retryState.pendingSettings
-            || retryState.pendingSettings.generation !== generation
-          ) return;
-          settingsDeliveryGeneration = generation;
-          sendSettingsAttempt(retryState.pendingSettings, deliveryAttempt + 1);
-        }, SETTINGS_RETRY_DELAY_MS * deliveryAttempt);
+        scheduleSettingsRetry(generation, deliveryAttempt, SETTINGS_RETRY_DELAY_MS * deliveryAttempt);
       }
     }
   );
+}
+
+function scheduleSettingsRetry(generation, deliveryAttempt, delay) {
+  if (settingsRetryTimer !== null) clearTimeout(settingsRetryTimer);
+  settingsRetryTimer = setTimeout(function () {
+    settingsRetryTimer = null;
+    var state = loadState();
+    if (
+      settingsDeliveryGeneration !== null
+      || !state.pendingSettings
+      || state.pendingSettings.generation !== generation
+    ) return;
+    if (deliveryAttempt >= SETTINGS_MAX_ATTEMPTS) {
+      state.warning = SETTINGS_WARNING_PREFIX
+        + " Watch confirmation missing. Reopen settings with the watch connected.";
+      saveState(state);
+      return;
+    }
+    settingsDeliveryGeneration = generation;
+    sendSettingsAttempt(state.pendingSettings, deliveryAttempt + 1);
+  }, delay);
+  if (settingsRetryTimer && typeof settingsRetryTimer.unref === "function") {
+    settingsRetryTimer.unref();
+  }
 }
 
 function sendPendingSettings() {
@@ -450,6 +468,8 @@ function sendPendingSettings() {
   var state = loadState();
   var pending = state.pendingSettings;
   if (!pending || !settingsResponseValid(pending.response)) return;
+  if (settingsRetryTimer !== null) clearTimeout(settingsRetryTimer);
+  settingsRetryTimer = null;
   settingsDeliveryGeneration = pending.generation;
   sendSettingsAttempt(pending, 1);
 }
@@ -604,7 +624,10 @@ function handleSettings(payload) {
     return;
   }
   state.pendingSettings = null;
-  if (state.warning && state.warning.indexOf("Watch did not apply") === 0) {
+  if (settingsRetryTimer !== null) clearTimeout(settingsRetryTimer);
+  settingsRetryTimer = null;
+  if (state.warning && (state.warning.indexOf("Watch did not apply") === 0
+      || state.warning.indexOf(SETTINGS_WARNING_PREFIX) === 0)) {
     state.warning = null;
   }
   state.settings = payload;
@@ -658,7 +681,12 @@ Pebble.addEventListener("appmessage", function (event) {
 });
 
 Pebble.addEventListener("showConfiguration", function () {
-  requestSync();
+  var state = loadState();
+  if (state.pendingSettings && settingsResponseValid(state.pendingSettings.response)) {
+    sendPendingSettings();
+  } else {
+    requestSync();
+  }
   setTimeout(function () {
     var html = reportPage.buildReportPage(loadState());
     Pebble.openURL("data:text/html;charset=utf-8," + encodeURIComponent(html));

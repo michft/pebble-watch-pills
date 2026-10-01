@@ -246,6 +246,7 @@ static time_t s_alert_ends_at;
 static bool s_edit_value_mode;
 static uint8_t s_active_timezone;
 static bool s_syncing;
+static bool s_sync_restart;
 static bool s_sync_show_status;
 static bool s_schedule_error;
 static bool s_storage_error;
@@ -1473,6 +1474,7 @@ static void outbox_sent(DictionaryIterator *iterator, void *context) {
  */
 static void outbox_failed(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
   s_syncing = false;
+  s_sync_restart = false;
   if (s_sync_show_status) {
     snprintf(s_footer_text, sizeof(s_footer_text), "Phone unavailable");
     set_footer_text();
@@ -1486,10 +1488,15 @@ static void outbox_failed(DictionaryIterator *iterator, AppMessageResult reason,
  */
 static void send_payload(int32_t type, const char *payload) {
   DictionaryIterator *iterator;
-  if (app_message_outbox_begin(&iterator) != APP_MSG_OK) return;
+  AppMessageResult result = app_message_outbox_begin(&iterator);
+  if (result != APP_MSG_OK) {
+    outbox_failed(NULL, result, NULL);
+    return;
+  }
   dict_write_int32(iterator, MESSAGE_KEY_TYPE, type);
   dict_write_cstring(iterator, MESSAGE_KEY_PAYLOAD, payload);
-  app_message_outbox_send();
+  result = app_message_outbox_send();
+  if (result != APP_MSG_OK) outbox_failed(NULL, result, NULL);
 }
 
 static uint32_t timezone_state_fingerprint(const TimezoneSettings *zone) {
@@ -1564,6 +1571,10 @@ static void send_settings_snapshot(void) {
  * Sends the next configuration, event, or completion payload for the active synchronisation.
  */
 static void send_sync_item(void) {
+  if (s_sync_restart) {
+    s_sync_restart = false;
+    s_sync_index = 0;
+  }
   static char payload[500];
   char install_id[16];
   snprintf(install_id, sizeof(install_id), "%08lx", (unsigned long)s_state.install_id);
@@ -1622,8 +1633,13 @@ static void send_sync_item(void) {
  * Starts sending the reminder settings and event history to the phone.
  */
 static void start_sync(bool show_status) {
-  if (s_syncing) return;
+  if (s_syncing) {
+    // Send the latest snapshot as soon as the current outbox message finishes.
+    s_sync_restart = true;
+    return;
+  }
   s_syncing = true;
+  s_sync_restart = false;
   s_sync_show_status = show_status;
   s_sync_index = 0;
   if (!show_status) {
@@ -1743,6 +1759,8 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
     schedule_next();
     if (s_screen == SCREEN_WATCHFACE && !s_timezone_feedback_timer) {
       update_watchface();
+    } else if (s_screen == SCREEN_TIMEZONES) {
+      show_timezones();
     }
     return;
   }
@@ -1750,7 +1768,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
 
   DisplaySettings proposed_display = s_display_settings;
   if (!read_timezone_settings(iterator, &proposed_display)) {
-    send_settings_snapshot();
+    start_sync(false);
     return;
   }
 
@@ -1766,20 +1784,20 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   for (uint8_t index = 0; index < ARRAY_LENGTH(display_keys); index++) {
     Tuple *value = dict_find(iterator, display_keys[index]);
     if (!value || value->value->int32 < 0 || value->value->int32 > display_maximums[index]) {
-      send_settings_snapshot();
+      start_sync(false);
       return;
     }
     display_values[index] = value->value->int32;
   }
   Tuple *use_digits = dict_find(iterator, MESSAGE_KEY_USE_DIGITS);
   if (use_digits && (use_digits->value->int32 < 0 || use_digits->value->int32 > 1)) {
-    send_settings_snapshot();
+    start_sync(false);
     return;
   }
   Tuple *digits_mask = dict_find(iterator, MESSAGE_KEY_TZ_DIGITS_MASK);
   if (digits_mask && (digits_mask->value->int32 < 0
       || digits_mask->value->int32 >= (1 << TIMEZONE_COUNT))) {
-    send_settings_snapshot();
+    start_sync(false);
     return;
   }
   uint8_t proposed_digits_mask = digits_mask ? (uint8_t)digits_mask->value->int32
@@ -1808,7 +1826,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
       || minute->value->int32 < 0 || minute->value->int32 > 59
       || enabled->value->int32 < 0 || enabled->value->int32 > 1
     ) {
-      send_settings_snapshot();
+      start_sync(false);
       return;
     }
     proposed[index].hour = (uint8_t)hour->value->int32;
@@ -1816,7 +1834,7 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
     proposed[index].enabled = enabled->value->int32 == 1;
   }
   if (times_too_close(proposed)) {
-    send_settings_snapshot();
+    start_sync(false);
     return;
   }
 
@@ -1835,7 +1853,9 @@ static void inbox_received(DictionaryIterator *iterator, void *context) {
   }
   schedule_next();
   if (s_screen == SCREEN_WATCHFACE) update_watchface();
-  send_settings_snapshot();
+  else if (s_screen == SCREEN_MAIN) show_main(NULL);
+  else if (s_screen == SCREEN_TIMEZONES) show_timezones();
+  start_sync(false);
 }
 
 /**

@@ -154,6 +154,73 @@ test("saves and reopens Sydney words, Sydney digits, and UTC words", () => {
   }
 });
 
+test("disabled rows keep saved values when edits are invalid, while enabled rows still validate", () => {
+  const html = buildReportPage({
+    events: [], droppedEvents: 0,
+    settings: {
+      zones: zones(),
+      slots: [8, 12, 18, 21].map((hour, id) => ({
+        id, hour, minute: id === 3 ? 37 : 0, enabled: true,
+      })),
+    },
+  });
+  const script = html.match(/<script>([\s\S]+)<\/script>/)[1];
+  const elements = {
+    appearance: { value: "auto" },
+    horizontal: { value: "2" },
+    vertical: { value: "1" },
+    "font-size": { value: "2" },
+  };
+  for (let index = 0; index < 4; index += 1) {
+    for (const id of [`slot-${index}-time`, `zone-${index}-label`, `zone-${index}-time-zone`]) {
+      const value = html.match(new RegExp(`id=${id} [^>]*value='([^']*)'`))[1];
+      elements[id] = { value, defaultValue: value };
+    }
+    elements[`slot-${index}-enabled`] = { checked: true };
+    elements[`zone-${index}-enabled`] = { checked: true };
+    elements[`slot-row-${index}`] = { hidden: false };
+    elements[`zone-row-${index}`] = { hidden: false };
+    elements[`zone-${index}-use-digits`] = { value: "0" };
+    elements[`zone-${index}-scheme`] = {
+      value: "0,1", selectedIndex: 0, options: [{ getAttribute() { return "#000000"; } }],
+    };
+    elements[`zone-${index}-scheme-preview`] = { style: {} };
+  }
+  const alerts = [];
+  const context = {
+    document: { getElementById(id) { return elements[id]; } },
+    location: { href: "" },
+    alert(message) { alerts.push(message); },
+  };
+  vm.runInNewContext(script, context);
+  elements["slot-3-time"].value = "";
+  elements["slot-3-enabled"].checked = false;
+  elements["zone-3-label"].value = "";
+  elements["zone-3-enabled"].checked = false;
+  context.hideUnchecked("slot", 3);
+  context.hideUnchecked("zone", 3);
+  assert.equal(elements["slot-row-3"].hidden, true);
+  assert.equal(elements["zone-row-3"].hidden, true);
+  context.saveSettings();
+  assert.deepEqual(alerts, []);
+  const saved = JSON.parse(decodeURIComponent(context.location.href.split("#")[1]));
+  assert.deepEqual(saved.slots[3], { id: 3, hour: 21, minute: 37, enabled: false });
+  assert.equal(saved.zones[3].enabled, false);
+  assert.equal(saved.zones[3].label, "NEW YORK");
+  assert.equal(saved.display.horizontal, 2);
+
+  context.location.href = "";
+  elements["slot-3-enabled"].checked = true;
+  context.saveSettings();
+  assert.equal(alerts.pop(), "Set all reminder times.");
+  assert.equal(context.location.href, "");
+  elements["slot-3-enabled"].checked = false;
+  elements["zone-3-enabled"].checked = true;
+  context.saveSettings();
+  assert.equal(alerts.pop(), "Timezone labels need 1-8 letters, numbers, or spaces.");
+  assert.equal(context.location.href, "");
+});
+
 test("deduplicates one expected pill per Home day and slot", () => {
   const now = Date.now();
   const homeDay = dateKeyAt("Australia/Sydney", now);

@@ -56,6 +56,19 @@ The phone settings/report page has its own **Auto**, **Light**, and **Dark**
 appearance setting. Auto follows the phone. Light uses black on white; Dark
 uses white on black. This does not change the watch colour scheme.
 
+## If phone settings do not reach the watch
+
+1. Keep Number Watch open on the watch and confirm it is connected in rePebble.
+2. Save phone settings. Failed delivery or a missing confirmation retries up to
+   three times. The phone keeps your changes pending until the watch reports
+   matching settings.
+3. If a warning remains, reconnect and reopen phone settings. Reopening retries
+   the pending configuration without requiring you to enter it again.
+
+Settings arriving during a report sync queue a fresh report, so the latest
+configuration is confirmed. Open reminder and timezone lists refresh when
+phone changes arrive; an unsaved watch reminder edit stays yours to save or cancel.
+
 ## Acknowledge a reminder
 
 When a reminder is due, the watch vibrates and displays **TAKE PILL 1**,

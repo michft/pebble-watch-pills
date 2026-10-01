@@ -2,6 +2,15 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.15] - 2026-10-02
+
+- Retry pending phone settings when reopening configuration or when watch
+  confirmation is missing, and clear delivery warnings after confirmation.
+- Preserve the latest settings report during overlapping sync requests and
+  recover from immediate watch transport failures.
+- Refresh visible watch reminder and timezone lists after phone updates.
+- Keep disabled rows with cleared times or labels from blocking phone Save.
+
 ## [0.2.14] - 2026-09-17
 
 - Choose Words or Digits independently for each timezone, including multiple
