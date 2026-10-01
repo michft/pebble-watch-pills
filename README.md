@@ -56,11 +56,16 @@ in the rePebble phone app. Phone page also controls:
 - font size: small, medium, large
 
 Only checked reminders and timezones remain visible on the phone page; use the
-Add buttons at each list's bottom to enable another. Save sends complete
+Add buttons at each list's bottom to enable another. Clearing a time or label
+before disabling its row preserves the previous saved value, so hidden rows do
+not block Save. Save sends complete
 configuration to watch atomically, then requests a fresh watch-to-phone report
-sync. Failed delivery makes up to three attempts, and the phone keeps the saved
-settings pending until the watch snapshot confirms them. Enabled reminders must
-remain at least two minutes apart. Phone resolves
+sync. Failed delivery or missing watch confirmation makes up to three attempts,
+and the phone keeps saved settings pending until the watch snapshot confirms
+them. Reopening phone settings retries pending changes; keep Number Watch open
+on the connected watch. Watch reminder/timezone lists refresh when changes arrive,
+and overlapping report requests retain the latest settings snapshot. Enabled
+reminders must remain at least two minutes apart. Phone resolves
 IANA daylight-saving rules for every timezone on bridge connection, settings
 save, and report sync, then sends current offsets plus next transitions.
 
@@ -133,7 +138,7 @@ then review the current jj working-copy changes manually:
 ```sh
 cr auth login
 cr auth status
-cr review --plain --type uncommitted --base main
+cr review --uncommitted --include-untracked --base main
 ```
 
 ## CloudPebble deployment
