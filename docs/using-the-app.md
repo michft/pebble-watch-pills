@@ -25,7 +25,12 @@ Select and Back are intentionally unused for app navigation.
 ## Configure and switch timezones
 
 1. Open Number Watch settings in the rePebble phone app.
-2. Configure **Home** with a named IANA timezone and label.
+2. Under **Home**, type a city or IANA name in **Search timezones**, then choose
+   from the **Timezone** dropdown. Search ignores case, spaces, and separators;
+   `sydny` finds `Australia/Sydney`. Choosing fills the full name and suggests
+   a label; edit the label if needed. Typing alone keeps the current timezone.
+   Clear the search to browse all names. Saved names and aliases stay available.
+   If a name is missing, type its full valid IANA name to offer it in the dropdown.
 3. Use **+ Add timezone** to enable up to three more named timezones.
 4. Choose a label, colour scheme, and Words/Digits display for each, then save.
 5. On the watchface, press Up for the previous checked timezone or Down for the

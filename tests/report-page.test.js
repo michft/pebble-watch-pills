@@ -13,6 +13,133 @@ function zones() {
   ];
 }
 
+function timezonePageContext(configuredZones = zones()) {
+  const html = buildReportPage({
+    events: [], droppedEvents: 0, settings: { zones: configuredZones, slots: [] },
+  });
+  const elements = {};
+  configuredZones.forEach((zone, index) => {
+    elements[`zone-${index}-search`] = { value: "" };
+    elements[`zone-${index}-matches`] = { textContent: "" };
+    elements[`zone-${index}-label`] = { value: zone.label };
+    elements[`zone-${index}-time-zone`] = {
+      value: zone.timeZone, options: [],
+      appendChild(option) { this.options.push(option); },
+    };
+    elements[`zone-${index}-scheme`] = {
+      selectedIndex: 0, options: [{ getAttribute() { return "#000000"; } }],
+    };
+    elements[`zone-${index}-scheme-preview`] = { style: {} };
+  });
+  const context = {
+    document: {
+      getElementById(id) { return elements[id]; },
+      createElement() { return {}; },
+    },
+  };
+  vm.runInNewContext(html.match(/<script>([\s\S]+)<\/script>/)[1], context);
+  return { html, context, elements };
+}
+
+test("timezone dropdown search ranks direct matches and supports fuzzy city fragments", () => {
+  const { html, context } = timezonePageContext();
+  assert.match(html, /id=zone-0-search type=text[^>]+oninput=filterTimeZones\(0\)/);
+  assert.match(html, /id=zone-0-matches role=status aria-live=polite/);
+  assert.match(html, /<select id=zone-0-time-zone onchange=selectTimeZone\(0\)>/);
+  assert.doesNotMatch(html, /<datalist/);
+  for (const query of ["SYD", "sydny", " australia / sydney "]) {
+    assert.equal(context.timezoneMatches(context.timeZones, query)[0], "Australia/Sydney");
+  }
+  assert.equal(context.timezoneMatches(context.timeZones, "new york")[0], "America/New_York");
+  assert.equal(context.timezoneMatches(context.timeZones, "UTC")[0], "UTC");
+  assert.deepEqual(Array.from(context.timezoneMatches([
+    "Europe/Sydny", "Australia/Sydney", "Asia/Sydney_City", "UTC",
+  ], "sydney")), ["Australia/Sydney", "Asia/Sydney_City"]);
+});
+
+test("search keeps selection until dropdown choice fills full timezone and label", () => {
+  const { context, elements } = timezonePageContext();
+  const select = elements["zone-1-time-zone"];
+  const search = elements["zone-1-search"];
+  search.value = "sydny";
+  context.filterTimeZones(1);
+  assert.equal(select.value, "Europe/London");
+  assert.equal(elements["zone-1-label"].value, "LONDON");
+  assert.equal(select.options[0].textContent, "Current — Europe/London");
+  assert.ok(select.options.some((option) => option.value === "Australia/Sydney"));
+  const choiceCount = select.options.length;
+  select.value = "Australia/Sydney";
+  context.selectTimeZone(1);
+  assert.equal(search.value, "Australia/Sydney");
+  assert.equal(elements["zone-1-label"].value, "SYDNEY");
+  assert.equal(elements["zone-0-label"].value, "SYDNEY");
+  assert.equal(elements["zone-2-time-zone"].value, "Asia/Tokyo");
+  assert.equal(select.options.length, choiceCount);
+  assert.equal(select.options[0].textContent, "Europe/London");
+  search.value = "zzzzzz";
+  context.filterTimeZones(1);
+  assert.equal(select.value, "Australia/Sydney");
+  assert.equal(select.options.length, 1);
+  assert.match(elements["zone-1-matches"].textContent, /No matches. Current timezone kept/);
+  search.value = "";
+  context.filterTimeZones(1);
+  assert.equal(select.options.length, context.timeZones.length);
+  assert.equal(select.value, "Australia/Sydney");
+});
+
+test("differently cased full queries reuse existing timezone values", () => {
+  const configuredZones = zones();
+  configuredZones[3].timeZone = "US/Eastern";
+  const { context, elements } = timezonePageContext(configuredZones);
+  const select = elements["zone-1-time-zone"];
+  for (const [query, expected] of [
+    ["australia/sydney", "Australia/Sydney"],
+    ["EuRoPe/LoNdOn", "Europe/London"],
+    ["utc", "UTC"],
+    ["us/eastern", "US/Eastern"],
+  ]) {
+    elements["zone-1-search"].value = query;
+    context.filterTimeZones(1);
+    const matchingOptions = select.options.filter((option) =>
+      option.value.toLowerCase() === query.toLowerCase());
+    assert.deepEqual(matchingOptions.map((option) => option.value), [expected]);
+    select.value = expected;
+    context.selectTimeZone(1);
+    assert.equal(elements["zone-1-search"].value, expected);
+  }
+});
+
+test("valid full IANA names outside a phone shortlist remain selectable", () => {
+  const { context, elements } = timezonePageContext();
+  context.timeZones = ["UTC", "Europe/London"];
+  elements["zone-1-search"].value = " Pacific/Chatham ";
+  context.filterTimeZones(1);
+  const select = elements["zone-1-time-zone"];
+  assert.ok(select.options.some((option) => option.value === "Pacific/Chatham"));
+  select.value = "Pacific/Chatham";
+  context.selectTimeZone(1);
+  assert.equal(elements["zone-1-search"].value, "Pacific/Chatham");
+  assert.equal(elements["zone-1-label"].value, "CHATHAM");
+  elements["zone-1-search"].value = "Not/A_Zone";
+  context.filterTimeZones(1);
+  assert.equal(select.options.length, 1);
+  assert.equal(select.value, "Pacific/Chatham");
+  assert.match(elements["zone-1-matches"].textContent, /No matches/);
+});
+
+test("saved aliases remain selectable and timezone names are escaped in HTML and script", () => {
+  const configuredZones = zones();
+  configuredZones[0].timeZone = "US/Eastern";
+  configuredZones[3].timeZone = "</script><img src=x onerror=alert(1)>";
+  const { html, context, elements } = timezonePageContext(configuredZones);
+  assert.match(html, /value='US\/Eastern' selected>US\/Eastern/);
+  assert.doesNotMatch(html, /<img src=x/);
+  elements["zone-0-search"].value = "us eastern";
+  context.filterTimeZones(0);
+  assert.equal(elements["zone-0-time-zone"].value, "US/Eastern");
+  assert.equal(elements["zone-0-time-zone"].options[0].textContent, "US/Eastern");
+});
+
 test("renders checked-only settings and selectable taken timezone", () => {
   const now = Date.now();
   const html = buildReportPage({
@@ -85,7 +212,8 @@ test("renders checked-only settings and selectable taken timezone", () => {
   assert.match(html, /class=taken-zone/);
   assert.match(html, /data-initial='Europe\/London'/);
   assert.match(html, /value='Europe\/London' selected>LONDON —/);
-  assert.doesNotMatch(html, /value='America\/New_York' selected/);
+  const takenSelect = html.match(/<select class=taken-zone[^]*?<\/select>/)[0];
+  assert.doesNotMatch(takenSelect, /value='America\/New_York'/);
   assert.match(html, /Save taken timezones/);
   assert.match(
     html,
@@ -122,7 +250,12 @@ test("saves and reopens Sydney words, Sydney digits, and UTC words", () => {
     elements[`slot-${index}-time`] = { value: `${8 + index * 4}:00` };
     elements[`slot-${index}-enabled`] = { checked: index < 2 };
     elements[`zone-${index}-label`] = { value: zone.label };
-    elements[`zone-${index}-time-zone`] = { value: zone.timeZone };
+    elements[`zone-${index}-time-zone`] = {
+      value: zone.timeZone, options: [],
+      appendChild(option) { this.options.push(option); },
+    };
+    elements[`zone-${index}-search`] = { value: "sydny" };
+    elements[`zone-${index}-matches`] = { textContent: "" };
     elements[`zone-${index}-enabled`] = { checked: zone.enabled };
     elements[`zone-${index}-scheme`] = {
       value: `${zone.textColor},${zone.backgroundColor}`,
@@ -132,11 +265,18 @@ test("saves and reopens Sydney words, Sydney digits, and UTC words", () => {
     elements[`zone-${index}-scheme-preview`] = { style: {} };
   });
   const context = {
-    document: { getElementById(id) { return elements[id]; } },
+    document: {
+      getElementById(id) { return elements[id]; },
+      createElement() { return {}; },
+    },
     location: { href: "" },
     alert(message) { throw new Error(message); },
   };
   vm.runInNewContext(script, context);
+  context.filterTimeZones(1);
+  elements["zone-1-time-zone"].value = "Australia/Sydney";
+  context.selectTimeZone(1);
+  elements["zone-1-label"].value = "SYD NUM";
   for (const useDigits of [true, false]) {
     elements["zone-1-use-digits"].value = useDigits ? "1" : "0";
     configuredZones[1].useDigits = useDigits;
@@ -172,10 +312,14 @@ test("disabled rows keep saved values when edits are invalid, while enabled rows
     "font-size": { value: "2" },
   };
   for (let index = 0; index < 4; index += 1) {
-    for (const id of [`slot-${index}-time`, `zone-${index}-label`, `zone-${index}-time-zone`]) {
+    for (const id of [`slot-${index}-time`, `zone-${index}-label`]) {
       const value = html.match(new RegExp(`id=${id} [^>]*value='([^']*)'`))[1];
       elements[id] = { value, defaultValue: value };
     }
+    const timezoneSelect = html.match(new RegExp(`id=zone-${index}-time-zone[^]*?</select>`))[0];
+    elements[`zone-${index}-time-zone`] = {
+      value: timezoneSelect.match(/value='([^']*)' selected/)[1],
+    };
     elements[`slot-${index}-enabled`] = { checked: true };
     elements[`zone-${index}-enabled`] = { checked: true };
     elements[`slot-row-${index}`] = { hidden: false };
@@ -303,7 +447,7 @@ test("falls back to Home plus three hidden timezone slots and auto appearance", 
   assert.match(html, /id=zone-row-1 hidden/);
   assert.match(html, /id=zone-row-2 hidden/);
   assert.match(html, /id=zone-row-3 hidden/);
-  assert.match(html, /id=zone-1-time-zone list=timezone-options value='UTC'/);
+  assert.match(html, /id=zone-1-time-zone[^]*?<option value='UTC' selected>UTC<\/option>/);
   assert.match(html, /data-appearance='auto'/);
   assert.match(html, /id=appearance[^]*<option value=auto selected>/);
   assert.match(html, /id=zone-1-scheme[^]*value='1,10'[^>]+selected>Solar/);

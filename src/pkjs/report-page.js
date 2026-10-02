@@ -24,6 +24,72 @@ function jsonForScript(value) {
     .replace(/\u2029/g, "\\u2029");
 }
 
+function timezoneMatches(timeZones, query) {
+  query = query.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!query) return timeZones.slice();
+  return timeZones.map(function (zone) {
+    var name = zone.toLowerCase().replace(/[^a-z0-9]/g, "");
+    var city = zone.split("/").pop().toLowerCase().replace(/[^a-z0-9]/g, "");
+    var score = name === query || city === query ? 0 : city.indexOf(query) === 0 ? 1
+      : city.indexOf(query) !== -1 ? 2 : name.indexOf(query) !== -1 ? 3 : 4;
+    var position = -1;
+    for (var i = 0; i < query.length && score === 4; i += 1) {
+      position = name.indexOf(query.charAt(i), position + 1);
+      if (position === -1) return null;
+    }
+    return { zone: zone, score: score };
+  }).filter(function (match) {
+    return match !== null;
+  }).sort(function (left, right) {
+    return left.score - right.score || left.zone.localeCompare(right.zone);
+  }).map(function (match) {
+    return match.zone;
+  });
+}
+
+function filterTimeZones(index) {
+  var prefix = "zone-" + index;
+  var select = document.getElementById(prefix + "-time-zone");
+  var current = select.value;
+  var query = document.getElementById(prefix + "-search").value.trim();
+  var matches = timezoneMatches(timeZones, query);
+  if (query && !matches.some(function (zone) {
+    return zone.toLowerCase() === query.toLowerCase();
+  })) {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: query });
+      matches.unshift(query);
+    } catch (error) {
+      // Fragments are search terms; only valid full names become extra choices.
+    }
+  }
+  var choices = matches.slice();
+  if (choices.indexOf(current) === -1) choices.unshift(current);
+  select.options.length = 0;
+  choices.forEach(function (zone) {
+    var option = document.createElement("option");
+    option.value = zone;
+    option.textContent = matches.indexOf(zone) === -1 ? "Current — " + zone : zone;
+    select.appendChild(option);
+  });
+  select.value = current;
+  document.getElementById(prefix + "-matches").textContent = matches.length
+    ? matches.length + " matching timezones. Choose from the dropdown."
+    : "No matches. Current timezone kept. Try another search.";
+}
+
+function selectTimeZone(index) {
+  var prefix = "zone-" + index;
+  var select = document.getElementById(prefix + "-time-zone");
+  document.getElementById(prefix + "-search").value = select.value;
+  updateZoneLabel(index);
+  for (var i = 0; i < select.options.length; i += 1) {
+    select.options[i].textContent = select.options[i].value;
+  }
+  document.getElementById(prefix + "-matches").textContent =
+    "Selected " + select.value + ". Clear search to browse all timezones.";
+}
+
 /**
  * Formats a value with a leading zero when it is less than 10.
  * @param {number} value - The value to format.
@@ -202,9 +268,10 @@ function dailyDetails(events, zones) {
  * Builds an HTML card displaying the current reminder settings.
  * @param {Object} settings - The settings snapshot containing reminder slots and hour-format preferences.
  * @param {string} appearance - The phone report appearance mode.
+ * @param {Array<string>} timeZones - Available timezone names, including saved aliases.
  * @return {string} The rendered settings card HTML.
  */
-function settingsSection(settings, appearance) {
+function settingsSection(settings, appearance, timeZones) {
   var fallbackSlots = [8, 12, 18, 22].map(function (hour, id) {
     return { id: id, hour: hour, minute: 0, enabled: true };
   });
@@ -219,7 +286,6 @@ function settingsSection(settings, appearance) {
     backgroundColor: 1,
   };
   var zones = normaliseZones(settings);
-  var timeZones = timezone.supportedTimeZones();
   function options(values, selected) {
     return values.map(function (entry) {
       return "<option value=" + entry[0]
@@ -227,12 +293,6 @@ function settingsSection(settings, appearance) {
         + escapeHtml(entry[1]) + "</option>";
     }).join("");
   }
-  zones.forEach(function (zone) {
-    if (timeZones.indexOf(zone.timeZone) === -1) timeZones.unshift(zone.timeZone);
-  });
-  var timeZoneDatalist = "<datalist id=timezone-options>" + timeZones.map(function (zone) {
-    return "<option value='" + escapeHtml(zone) + "'>";
-  }).join("") + "</datalist>";
   var reminderRows = slots.map(function (slot, index) {
     return "<div class='reminder configurable-row' id=slot-row-" + index
       + (slot.enabled ? "" : " hidden") + "><label for=slot-" + index + "-time>Pill "
@@ -270,10 +330,16 @@ function settingsSection(settings, appearance) {
     var heading = index === 0 ? "Home — " + zone.label : zone.label;
     return "<div class='timezone configurable-row' id=zone-row-" + index
       + (zone.enabled ? "" : " hidden") + "><h3>" + escapeHtml(heading)
-      + "</h3>" + enabledControl + "<label for=zone-" + index + "-time-zone>Timezone</label>"
-      + "<input id=zone-" + index + "-time-zone list=timezone-options value='"
-      + escapeHtml(zone.timeZone) + "' onchange=updateZoneLabel(" + index
-      + ")><label for=zone-" + index + "-label>Label</label>"
+      + "</h3>" + enabledControl + "<label for=zone-" + index + "-search>Search timezones</label>"
+      + "<input id=zone-" + index + "-search type=text autocomplete=off placeholder='City or timezone, e.g. sydny'"
+      + " aria-describedby=zone-" + index + "-matches oninput=filterTimeZones(" + index + ")>"
+      + "<p class=muted id=zone-" + index + "-matches role=status aria-live=polite>Type to filter, then choose a timezone.</p>"
+      + "<label for=zone-" + index + "-time-zone>Timezone</label>"
+      + "<select id=zone-" + index + "-time-zone onchange=selectTimeZone(" + index + ")>"
+      + timeZones.map(function (name) {
+        return "<option value='" + escapeHtml(name) + "'"
+          + (name === zone.timeZone ? " selected" : "") + ">" + escapeHtml(name) + "</option>";
+      }).join("") + "</select><label for=zone-" + index + "-label>Label</label>"
       + "<input id=zone-" + index + "-label type=text maxlength=8 pattern='[A-Za-z0-9 ]{1,8}' value='"
       + escapeHtml(zone.label) + "'><label for=zone-" + index + "-scheme>Colour scheme</label>"
       + "<select id=zone-" + index + "-scheme onchange=updateSchemePreview(" + index + ")>"
@@ -295,7 +361,7 @@ function settingsSection(settings, appearance) {
     + "<button type=button onclick=addRow('slot')>+ Add reminder</button></fieldset>"
     + "<fieldset><legend>Timezones and colour schemes</legend>"
     + "<p class=muted>Home is default. Up/Down cycles only displayed timezone labels.</p>"
-    + zoneRows + timeZoneDatalist + "<button type=button onclick=addRow('zone')>+ Add timezone</button>"
+    + zoneRows + "<button type=button onclick=addRow('zone')>+ Add timezone</button>"
     + "<p class=muted>Phone refreshes daylight-saving data whenever bridge connects. "
     + "Watch stores next transitions for offline use.</p></fieldset>"
     + "<fieldset><legend>Text position</legend><label for=horizontal>Horizontal</label>"
@@ -316,6 +382,10 @@ exports.buildReportPage = function buildReportPage(state) {
     : "auto";
   var now = Date.now();
   var zones = normaliseZones(state.settings);
+  var timeZones = timezone.supportedTimeZones();
+  zones.forEach(function (zone) {
+    if (timeZones.indexOf(zone.timeZone) === -1) timeZones.unshift(zone.timeZone);
+  });
   var reportEvents = expectedEvents(state.events, zones[0].timeZone);
   var todayKey = timezone.dateKeyAt(zones[0].timeZone, now) || localDay(new Date(now));
   var todayOrdinal = dayOrdinal(todayKey);
@@ -374,7 +444,7 @@ exports.buildReportPage = function buildReportPage(state) {
     + summaryCard("Today", countOutcomes(todayEvents))
     + summaryCard("Last 7 days", countOutcomes(sevenDayEvents))
     + summaryCard("Last 30 days", countOutcomes(thirtyDayEvents))
-    + settingsSection(state.settings, appearance)
+    + settingsSection(state.settings, appearance, timeZones)
     + "<section><h2>Taken list</h2>" + dailyDetails(thirtyDayEvents, zones)
     + "<button type=button onclick=saveTakenZones()>Save taken timezones</button></section>"
     + "<p class=muted>Taken means self-reported. Not taken means no Taken response; it does not prove a missed dose. "
@@ -388,6 +458,8 @@ exports.buildReportPage = function buildReportPage(state) {
     + "<button class=danger onclick=clearHistory()>Clear older records</button></section>"
     + "<button class=close onclick=closeReport()>Close</button>"
     + "<script>var historyEvents=" + jsonForScript(state.events) + ";"
+    + "var timeZones=" + jsonForScript(timeZones) + ";"
+    + timezoneMatches.toString() + filterTimeZones.toString() + selectTimeZone.toString()
     + "function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
     + "function applyAppearance(value){document.documentElement.setAttribute('data-appearance',value)}"
     + "function updateSchemePreview(index){var select=document.getElementById('zone-'+index+'-scheme');var option=select.options[select.selectedIndex];var preview=document.getElementById('zone-'+index+'-scheme-preview');preview.style.color=option.getAttribute('data-text');preview.style.backgroundColor=option.getAttribute('data-background')}"
