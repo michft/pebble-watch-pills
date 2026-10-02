@@ -2,6 +2,14 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.16] - 2026-10-02
+
+- Search timezone dropdowns by city, IANA name, or skipped-letter fragments;
+  ignore case, spaces, and separators, with direct matches first.
+- Fill the full timezone name and suggested label when choosing a match.
+  Searching alone keeps the selected timezone; retain saved names and aliases,
+  and accept valid full IANA names missing from a phone's shortlist.
+
 ## [0.2.15] - 2026-10-02
 
 - Retry pending phone settings when reopening configuration or when watch

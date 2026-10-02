@@ -55,6 +55,14 @@ in the rePebble phone app. Phone page also controls:
 - vertical alignment: top, middle, bottom
 - font size: small, medium, large
 
+Search timezones by city or IANA name, then choose from the filtered dropdown.
+Search ignores case, spaces, and separators; skipped letters work too
+(`sydny` finds `Australia/Sydney`). Choosing fills the full timezone name and
+suggests its label, which you can edit. Typing alone keeps the current timezone;
+clear the search to browse all available names. Saved names and aliases remain
+selectable even on phones with a shorter timezone list. Type a valid full IANA
+name to offer it in the dropdown when it is missing from the phone's shortlist.
+
 Only checked reminders and timezones remain visible on the phone page; use the
 Add buttons at each list's bottom to enable another. Clearing a time or label
 before disabling its row preserves the previous saved value, so hidden rows do
