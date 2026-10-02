@@ -87,6 +87,28 @@ test("search keeps selection until dropdown choice fills full timezone and label
   assert.equal(select.value, "Australia/Sydney");
 });
 
+test("differently cased full queries reuse existing timezone values", () => {
+  const configuredZones = zones();
+  configuredZones[3].timeZone = "US/Eastern";
+  const { context, elements } = timezonePageContext(configuredZones);
+  const select = elements["zone-1-time-zone"];
+  for (const [query, expected] of [
+    ["australia/sydney", "Australia/Sydney"],
+    ["EuRoPe/LoNdOn", "Europe/London"],
+    ["utc", "UTC"],
+    ["us/eastern", "US/Eastern"],
+  ]) {
+    elements["zone-1-search"].value = query;
+    context.filterTimeZones(1);
+    const matchingOptions = select.options.filter((option) =>
+      option.value.toLowerCase() === query.toLowerCase());
+    assert.deepEqual(matchingOptions.map((option) => option.value), [expected]);
+    select.value = expected;
+    context.selectTimeZone(1);
+    assert.equal(elements["zone-1-search"].value, expected);
+  }
+});
+
 test("valid full IANA names outside a phone shortlist remain selectable", () => {
   const { context, elements } = timezonePageContext();
   context.timeZones = ["UTC", "Europe/London"];

@@ -53,7 +53,9 @@ function filterTimeZones(index) {
   var current = select.value;
   var query = document.getElementById(prefix + "-search").value.trim();
   var matches = timezoneMatches(timeZones, query);
-  if (query && matches.indexOf(query) === -1) {
+  if (query && !matches.some(function (zone) {
+    return zone.toLowerCase() === query.toLowerCase();
+  })) {
     try {
       new Intl.DateTimeFormat("en", { timeZone: query });
       matches.unshift(query);
