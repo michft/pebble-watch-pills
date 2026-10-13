@@ -1,7 +1,7 @@
 {
   "name": "number-watch",
   "author": "mt",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "keywords": [
     "pebble-app"
   ],
@@ -92,7 +92,26 @@
       "TZ_DIGITS_MASK"
     ],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "type": "font",
+          "name": "FONT_DIGITS_88",
+          "file": "fonts/Roboto-Bold.ttf",
+          "characterRegex": "[0-9]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_DIGITS_96",
+          "file": "fonts/Roboto-Bold.ttf",
+          "characterRegex": "[0-9]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_DIGITS_104",
+          "file": "fonts/Roboto-Bold.ttf",
+          "characterRegex": "[0-9]"
+        }
+      ]
     }
   },
   "devDependencies": {

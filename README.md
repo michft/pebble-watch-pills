@@ -23,8 +23,10 @@ minutes at `:00`.
 
 Optional Digits mode always shows hours (0–23) on the top row and
 minutes (0–59) on the bottom row, without leading zeroes. Both rows remain
-visible at midnight and exact hours. Fonts, alignment, colours, timezone
-switching, and reminders work the same in both modes.
+visible at midnight and exact hours. Digits use enlarged bold fonts (88, 96,
+or 104px for Small, Medium, or Large) so both rows fill most of the display.
+Words retain their existing font sizes. Alignment, colours, timezone switching,
+and reminders work the same in both modes.
 
 ## Watch controls
 
