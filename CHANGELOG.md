@@ -2,6 +2,12 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.17] - 2026-10-13
+
+- Enlarge both Digits rows to use most of the watch display, with dedicated
+  88/96/104px bold fonts for Small/Medium/Large. Keep Words sizing, alignment,
+  colours, and time formatting unchanged; timezone labels remain readable.
+
 ## [0.2.16] - 2026-10-02
 
 - Search timezone dropdowns by city, IANA name, or skipped-letter fragments;

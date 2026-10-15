@@ -8,7 +8,9 @@ Upgrading preserves the previous shared mode for every existing entry.
 Digits show hours 0–23 on the top row and minutes 0–59 on the bottom row,
 without leading zeroes: 08:06 appears as `8` above `6`, midnight as `0` above `0`.
 Digits always use 24-hour time. Words and reminder times keep following the
-watch's 12/24-hour preference. Other settings and controls stay the same.
+watch's 12/24-hour preference. Digits use enlarged bold fonts to fill most of
+the screen with these two rows. **Font size** still chooses Small, Medium, or
+Large; Words keep their existing sizes. Other settings and controls stay the same.
 
 ## Configure reminders
 

@@ -224,6 +224,7 @@ _Static_assert(EVENTS_PER_CHUNK > 0, "ReminderEvent exceeds Pebble value limit")
 
 static Window *s_window;
 static TextLayer *s_watchface;
+static GFont s_digit_fonts[3];
 static TextLayer *s_header;
 static TextLayer *s_rows[SLOT_COUNT];
 static TextLayer *s_footer;
@@ -691,6 +692,14 @@ static GFont watchface_font(void) {
   }
 }
 
+static GFont watchface_digit_font(void) {
+  switch (s_display_settings.font_size) {
+    case FONT_SMALL: return s_digit_fonts[0];
+    case FONT_MEDIUM: return s_digit_fonts[1];
+    default: return s_digit_fonts[2];
+  }
+}
+
 static GTextAlignment watchface_alignment(void) {
   switch (s_display_settings.horizontal_alignment) {
     case HORIZONTAL_LEFT: return GTextAlignmentLeft;
@@ -745,9 +754,12 @@ static void update_watchface(void) {
   if (!s_watchface) return;
   int hour;
   int minute;
+  bool use_digits = false;
+  bool time_available = current_display_time(&hour, &minute);
+  if (time_available) use_digits = timezone_uses_digits(s_active_timezone);
   if (
-    !current_display_time(&hour, &minute)
-    || !(timezone_uses_digits(s_active_timezone)
+    !time_available
+    || !(use_digits
       ? time_digits_format_lines(hour, minute, s_watchface_text, sizeof(s_watchface_text))
       : time_words_format_lines(
         hour,
@@ -759,11 +771,12 @@ static void update_watchface(void) {
       ))
   ) {
     snprintf(s_watchface_text, sizeof(s_watchface_text), "Time unavailable");
+    use_digits = false;
   }
 
   Layer *root = window_get_root_layer(s_window);
   GRect bounds = layer_get_bounds(root);
-  GFont font = watchface_font();
+  GFont font = use_digits ? watchface_digit_font() : watchface_font();
   text_layer_set_font(s_watchface, font);
   text_layer_set_text_alignment(s_watchface, watchface_alignment());
   TimezoneSettings *zone = active_timezone_settings();
@@ -802,6 +815,7 @@ static void show_timezone_feedback(void) {
     s_timezone_feedback_timer = NULL;
   }
   update_watchface();
+  text_layer_set_font(s_watchface, watchface_font());
   text_layer_set_text_alignment(s_watchface, GTextAlignmentCenter);
   text_layer_set_text(
     s_watchface,
@@ -2093,6 +2107,9 @@ static TextLayer *make_text_layer(GRect frame, GFont font, GTextAlignment alignm
 static void init(void) {
   load_state();
   load_display_settings();
+  s_digit_fonts[0] = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_DIGITS_88));
+  s_digit_fonts[1] = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_DIGITS_96));
+  s_digit_fonts[2] = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_DIGITS_104));
 
   WakeupId launch_wakeup_id;
   int32_t launch_cookie;
@@ -2151,6 +2168,7 @@ static void deinit(void) {
   tick_timer_service_unsubscribe();
   for (uint8_t i = 0; i < SLOT_COUNT; i++) text_layer_destroy(s_rows[i]);
   text_layer_destroy(s_watchface);
+  for (uint8_t i = 0; i < 3; i++) fonts_unload_custom_font(s_digit_fonts[i]);
   text_layer_destroy(s_header);
   text_layer_destroy(s_footer);
   window_destroy(s_window);
