@@ -1736,7 +1736,10 @@ static bool read_timezone_settings(
       || transition_offset->value->int32 % DISPLAY_TIME_OFFSET_STEP_MINUTES != 0
     ) return false;
     char proposed_label[TIMEZONE_LABEL_LENGTH + 1];
-    snprintf(proposed_label, sizeof(proposed_label), "%s", label->value->cstring);
+    snprintf(
+      proposed_label, sizeof(proposed_label), "%.*s",
+      TIMEZONE_LABEL_LENGTH, label->value->cstring
+    );
     if (!timezone_label_valid(proposed_label)) return false;
     TimezoneSettings *zone = &settings->zones[index];
     zone->enabled = (uint8_t)enabled->value->int32;

@@ -18,3 +18,18 @@ Before declaring any task complete, perform all applicable housekeeping:
 
 Do not commit, push, publish, or create a release unless the user explicitly
 requests that action.
+
+## Native C verification: GCC is required
+
+- A macOS `pnpm test` pass is not Linux/GCC evidence: macOS `cc` normally runs
+  Clang. Native C and C test-harness changes must pass the Linux/GCC PR `test`
+  check on the exact current head SHA before being reported ready to merge.
+  Report pending, failed, or unavailable checks explicitly.
+- Preserve `-Wall -Wextra -Werror`. Never suppress `format-truncation` just to
+  make tests pass. Reproduce compiler diagnostics against the real affected
+  harness where possible, then confirm the same compilation passes after fixing.
+- Repeated release failure: GCC rejected a timezone-label `snprintf(..., "%s",
+  source)` into a nine-byte buffer despite an earlier length guard. Bound the
+  copy explicitly (for example, `%.*s` with `TIMEZONE_LABEL_LENGTH`) while keeping
+  validation before copying. Test that eight-character labels survive intact
+  and longer labels are rejected, rather than silently truncated and accepted.

@@ -193,6 +193,9 @@ int main(int argc, char **argv) {
   } else if (scenario == 6) {
     deliver(8);
     puts(snapshot);
+  } else if (scenario == 7) {
+    deliver(8);
+    printf("%lu\\n", (unsigned long)s_state.settings_revision);
   }
 }
 `;
@@ -228,6 +231,26 @@ int main(int argc, char **argv) {
         ...zone, timezoneFingerprint: JSON.parse(stored).pendingSettings.zoneFingerprints[index],
       })));
       assert.ok(Buffer.byteLength(payload) + 20 <= 1024, "snapshot dictionary fits native outbox");
+    });
+    await t.test("timezone labels preserve eight characters and reject invalid values without truncating", () => {
+      for (let zone = 0; zone < 4; zone++) {
+        const labelKey = String(keys.indexOf(`TZ_${zone}_LABEL`));
+        for (const label of ["A", "ABCDEFGH", "SYD 1234", "", "ABCDEFGHI", "A".repeat(64), "SYD-NUM"]) {
+          const args = [...messageArgs];
+          for (let index = 0; index < args.length; index += 2) {
+            if (args[index] === labelKey) args[index + 1] = label;
+          }
+          const valid = /^[A-Z0-9 ]{1,8}$/.test(label);
+          const result = childProcess.execFileSync(binary, [valid ? "6" : "7", ...args], { encoding: "utf8" }).trim();
+          if (valid) {
+            const snapshot = JSON.parse(result);
+            assert.equal(snapshot.revision, 1);
+            assert.equal(snapshot.zones[zone].label, label);
+          } else {
+            assert.equal(result, "0", `zone ${zone} must reject ${JSON.stringify(label)}`);
+          }
+        }
+      }
     });
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

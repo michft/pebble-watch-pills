@@ -166,6 +166,18 @@ and enabled in rePebble iOS app.
 
 ## Releases
 
+Pull requests targeting `main` run tests and release metadata checks on Linux,
+including native C harnesses under GCC with warnings treated as errors.
+For native C or C test-harness changes, a macOS `pnpm test` pass is insufficient:
+macOS `cc` normally uses Clang. Confirm the Linux PR `test` check passes on the
+current head SHA before merging; an earlier commit's green check does not count.
+
+This caught a repeated release failure in the timezone-label sync harness:
+GCC reported `-Werror=format-truncation` for an unbounded `%s` copy into a
+nine-byte buffer, even after a length check. Keep warnings fatal and bound the
+copy explicitly. Preserve rejection of oversized labels and test that all eight
+allowed characters survive; do not turn invalid input into an accepted truncation.
+
 `package.json` version is release source of truth. Before merging release to
 `main`, increment version and add matching `CHANGELOG.md` entry. Push to `main`
 runs tests, builds watchapp, uploads Pebble app-store version, then creates

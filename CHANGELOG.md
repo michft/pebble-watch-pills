@@ -2,6 +2,13 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.2.18] - 2026-10-16
+
+- Bound timezone-label copies explicitly so GCC's strict truncation checks pass
+  during release tests. Preserve full eight-character labels and reject longer
+  or invalid labels before applying settings.
+- Run tests and release metadata checks on Linux for pull requests before merge.
+
 ## [0.2.17] - 2026-10-13
 
 - Enlarge both Digits rows to use most of the watch display, with dedicated
