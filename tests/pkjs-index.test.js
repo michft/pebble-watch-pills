@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const vm = require("node:vm");
+const { buildReportPage } = require("../src/pkjs/report-page.js");
 const {
   dateKeyAt,
   systemTimeZone,
@@ -7,6 +9,28 @@ const {
 } = require("../src/pkjs/timezone.js");
 
 const STORAGE_KEY = "pebble-pills-phone-state-v1";
+
+function exportedSequences(html, retention) {
+  const script = html.match(/<script>([\s\S]+)<\/script>/)[1];
+  let content = null;
+  const context = {
+    document: {
+      body: { appendChild() {}, removeChild() {} },
+      createElement() { return { click() {} }; },
+      getElementById(id) {
+        if (id === "history-retention") return { value: retention };
+        return { options: [{ getAttribute() { return ""; } }], selectedIndex: 0, style: {} };
+      },
+    },
+    Blob: function Blob(parts) { content = parts.join(""); },
+    URL: { createObjectURL() { return "blob:"; }, revokeObjectURL() {} },
+    setTimeout() {},
+    alert() {},
+  };
+  vm.runInNewContext(script, context);
+  context.saveClearedRecords();
+  return content === null ? [] : JSON.parse(content).events.map((event) => event.sequence);
+}
 
 function timezoneFingerprint(timeZone) {
   const snapshot = timezoneSnapshot(timeZone, Date.now());
@@ -57,9 +81,7 @@ test("cleared phone history stays clear when retained watch events resync", () =
   const indexPath = require.resolve("../src/pkjs/index.js");
   delete require.cache[indexPath];
   try {
-    const bridge = require(indexPath);
-    assert.equal(bridge.TIMEZONE_COUNT, 4);
-    assert.equal(bridge.normaliseZones(null).length, bridge.TIMEZONE_COUNT);
+    require(indexPath);
     handlers.webviewclosed({
       response: encodeURIComponent(JSON.stringify({ action: "clear_history" })),
     });
@@ -108,30 +130,36 @@ test("cleared phone history stays clear when retained watch events resync", () =
   }
 });
 
-test("clears records outside the selected retention window", () => {
+test("clears records older than the selected number of Home calendar days", () => {
   const handlers = {};
   const originalDateNow = Date.now;
   const now = Date.UTC(2026, 7, 8, 12);
   const day = 24 * 60 * 60 * 1000;
-  const oldEvent = {
+  const settings = {
+    zones: [
+      { id: 0, enabled: true, timeZone: "UTC", label: "UTC" },
+      { id: 1, enabled: false, timeZone: "UTC", label: "UTC" },
+      { id: 2, enabled: false, timeZone: "UTC", label: "UTC" },
+      { id: 3, enabled: false, timeZone: "UTC", label: "UTC" },
+    ],
+  };
+  const event = (sequence, localDay) => ({
     installId: "watch",
-    sequence: 1,
+    sequence,
     slotId: 0,
-    scheduledAt: now - 8 * day,
-    localDay: "2026-07-31",
+    scheduledAt: Date.parse(`${localDay}T23:30:00Z`),
+    localDay,
+    homeTimeZone: "UTC",
     outcome: "no_response",
     answeredAt: null,
-  };
-  const recentEvent = {
-    ...oldEvent,
-    sequence: 2,
-    scheduledAt: now - 6 * day,
-    localDay: "2026-08-02",
-  };
+  });
+  // Today is 2026-08-08, so "last 7 days" is 2026-08-02 through 2026-08-08.
+  const oldEvent = event(1, "2026-08-01");
+  const recentEvent = event(2, "2026-08-02");
   let stored = JSON.stringify({
     version: 1,
     events: [oldEvent, recentEvent],
-    settings: null,
+    settings,
     lastSyncAt: null,
     droppedEvents: 2,
     warning: null,
@@ -152,6 +180,7 @@ test("clears records outside the selected retention window", () => {
   delete require.cache[indexPath];
   try {
     require(indexPath);
+    const exported = exportedSequences(buildReportPage(JSON.parse(stored)), "7");
     handlers.webviewclosed({
       response: encodeURIComponent(JSON.stringify({
         action: "clear_history",
@@ -160,8 +189,9 @@ test("clears records outside the selected retention window", () => {
     });
 
     let state = JSON.parse(stored);
-    assert.deepEqual(state.events.map((event) => event.sequence), [2]);
-    assert.equal(state.clearedBefore, now - 7 * day);
+    assert.deepEqual(state.events.map((stored) => stored.sequence), [2]);
+    assert.deepEqual(exported, [1], "page export selects exactly what the phone clears");
+    assert.equal(state.clearedThroughDay, "2026-08-01");
     assert.equal(state.droppedEvents, 2);
 
     handlers.appmessage({
@@ -169,21 +199,18 @@ test("clears records outside the selected retention window", () => {
         TYPE: 3,
         PAYLOAD: JSON.stringify({
           installId: "watch",
-          events: [oldEvent],
+          events: [oldEvent, { ...event(3, "2026-08-03"), localDay: "2026-08-03" }],
           droppedEvents: 2,
         }),
       },
     });
     state = JSON.parse(stored);
-    assert.deepEqual(state.events.map((event) => event.sequence), [2]);
+    assert.deepEqual(state.events.map((stored) => stored.sequence), [2, 3]);
 
     stored = JSON.stringify({
       version: 1,
-      events: [
-        { ...oldEvent, sequence: 3, scheduledAt: now - 31 * day },
-        { ...recentEvent, sequence: 4, scheduledAt: now - 29 * day },
-      ],
-      settings: null,
+      events: [event(4, "2026-07-09"), event(5, "2026-07-10")],
+      settings,
       lastSyncAt: null,
       droppedEvents: 0,
       warning: null,
@@ -196,8 +223,13 @@ test("clears records outside the selected retention window", () => {
       })),
     });
     state = JSON.parse(stored);
-    assert.deepEqual(state.events.map((event) => event.sequence), [4]);
-    assert.equal(state.clearedBefore, now - 30 * day);
+    assert.deepEqual(state.events.map((stored) => stored.sequence), [5]);
+    assert.equal(state.clearedThroughDay, "2026-07-09");
+
+    handlers.webviewclosed({
+      response: encodeURIComponent(JSON.stringify({ action: "clear_history", retentionDays: 14 })),
+    });
+    assert.deepEqual(JSON.parse(stored).events.map((stored) => stored.sequence), [5]);
   } finally {
     delete require.cache[indexPath];
     delete global.localStorage;

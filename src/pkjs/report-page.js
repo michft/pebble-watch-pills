@@ -1,7 +1,10 @@
 var timezone = require("./timezone");
 var colorSchemes = require("./color-schemes");
-var TIMEZONE_COUNT = timezone.TIMEZONE_COUNT;
+var rules = require("./rules");
+var history = require("./history");
+var pageScript = require("./page-script");
 var normaliseZones = timezone.normaliseZones;
+var APPEARANCES = ["auto", "light", "dark"];
 
 /**
  * Escapes HTML special characters in a value converted to a string.
@@ -17,79 +20,6 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-function jsonForScript(value) {
-  return JSON.stringify(value)
-    .replace(/</g, "\\u003c")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-}
-
-function timezoneMatches(timeZones, query) {
-  query = query.toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (!query) return timeZones.slice();
-  return timeZones.map(function (zone) {
-    var name = zone.toLowerCase().replace(/[^a-z0-9]/g, "");
-    var city = zone.split("/").pop().toLowerCase().replace(/[^a-z0-9]/g, "");
-    var score = name === query || city === query ? 0 : city.indexOf(query) === 0 ? 1
-      : city.indexOf(query) !== -1 ? 2 : name.indexOf(query) !== -1 ? 3 : 4;
-    var position = -1;
-    for (var i = 0; i < query.length && score === 4; i += 1) {
-      position = name.indexOf(query.charAt(i), position + 1);
-      if (position === -1) return null;
-    }
-    return { zone: zone, score: score };
-  }).filter(function (match) {
-    return match !== null;
-  }).sort(function (left, right) {
-    return left.score - right.score || left.zone.localeCompare(right.zone);
-  }).map(function (match) {
-    return match.zone;
-  });
-}
-
-function filterTimeZones(index) {
-  var prefix = "zone-" + index;
-  var select = document.getElementById(prefix + "-time-zone");
-  var current = select.value;
-  var query = document.getElementById(prefix + "-search").value.trim();
-  var matches = timezoneMatches(timeZones, query);
-  if (query && !matches.some(function (zone) {
-    return zone.toLowerCase() === query.toLowerCase();
-  })) {
-    try {
-      new Intl.DateTimeFormat("en", { timeZone: query });
-      matches.unshift(query);
-    } catch (error) {
-      // Fragments are search terms; only valid full names become extra choices.
-    }
-  }
-  var choices = matches.slice();
-  if (choices.indexOf(current) === -1) choices.unshift(current);
-  select.options.length = 0;
-  choices.forEach(function (zone) {
-    var option = document.createElement("option");
-    option.value = zone;
-    option.textContent = matches.indexOf(zone) === -1 ? "Current — " + zone : zone;
-    select.appendChild(option);
-  });
-  select.value = current;
-  document.getElementById(prefix + "-matches").textContent = matches.length
-    ? matches.length + " matching timezones. Choose from the dropdown."
-    : "No matches. Current timezone kept. Try another search.";
-}
-
-function selectTimeZone(index) {
-  var prefix = "zone-" + index;
-  var select = document.getElementById(prefix + "-time-zone");
-  document.getElementById(prefix + "-search").value = select.value;
-  updateZoneLabel(index);
-  for (var i = 0; i < select.options.length; i += 1) {
-    select.options[i].textContent = select.options[i].value;
-  }
-  document.getElementById(prefix + "-matches").textContent =
-    "Selected " + select.value + ". Clear search to browse all timezones.";
-}
-
 /**
  * Formats a value with a leading zero when it is less than 10.
  * @param {number} value - The value to format.
@@ -97,40 +27,6 @@ function selectTimeZone(index) {
  */
 function pad2(value) {
   return value < 10 ? "0" + value : String(value);
-}
-
-/**
- * Formats a date as a local calendar date.
- * @param {Date} date - The date to format.
- * @return {string} The date in `YYYY-MM-DD` format.
- */
-function localDay(date) {
-  return date.getFullYear()
-    + "-" + pad2(date.getMonth() + 1)
-    + "-" + pad2(date.getDate());
-}
-
-function dayOrdinal(dayKey) {
-  var parts = String(dayKey).split("-").map(Number);
-  if (parts.length !== 3 || parts.some(function (part) { return !Number.isInteger(part); })) {
-    return null;
-  }
-  return Math.floor(Date.UTC(parts[0], parts[1] - 1, parts[2]) / (24 * 60 * 60 * 1000));
-}
-
-/**
- * Formats a reminder slot time in 12-hour or 24-hour notation.
- * @param {Object} slot - The slot containing `hour` and `minute` values.
- * @param {boolean} hour12 - Whether to use 12-hour notation with an AM or PM suffix.
- * @return {string} The formatted slot time.
- */
-function formatSlotTime(slot, hour12) {
-  if (!hour12) {
-    return pad2(slot.hour) + ":" + pad2(slot.minute);
-  }
-  var suffix = slot.hour >= 12 ? "PM" : "AM";
-  var hour = slot.hour % 12 || 12;
-  return hour + ":" + pad2(slot.minute) + " " + suffix;
 }
 
 function expectedEvents(events, homeTimeZone) {
@@ -189,9 +85,9 @@ function summaryCard(title, counts) {
     ? "—"
     : Math.round(counts.taken * 100 / counts.scheduled) + "%";
   return "<section class=card><h2>" + escapeHtml(title) + "</h2>"
-    + "<div class=percentage>" + percentage + "</div>"
-    + "<p><strong>" + counts.taken + "</strong> taken · "
-    + "<strong>" + (counts.scheduled - counts.taken) + "</strong> not taken</p></section>";
+    + "<div class=percentage>" + escapeHtml(percentage) + "</div>"
+    + "<p><strong>" + escapeHtml(counts.taken) + "</strong> taken · "
+    + "<strong>" + escapeHtml(counts.scheduled - counts.taken) + "</strong> not taken</p></section>";
 }
 
 /**
@@ -235,30 +131,32 @@ function dailyDetails(events, zones) {
       var eventHomeTimeZone = event.homeTimeZone || homeZone.timeZone;
       var time = timezone.timeLabelAt(eventHomeTimeZone, event.scheduledAt) || "—";
       var takenTime = "—";
-      if (event.outcome === "taken" && event.answeredAt) {
+      var answered = typeof event.answeredAt === "number" && isFinite(event.answeredAt)
+        && event.answeredAt > 0;
+      if (event.outcome === "taken" && answered) {
         var selectedZone = event.takenTimeZone || homeZone.timeZone;
         if (!enabledZones.some(function (zone) { return zone.timeZone === selectedZone; })) {
           selectedZone = homeZone.timeZone;
         }
-        var identity = event.installId + ":" + event.sequence;
+        var identity = history.eventIdentity(event);
         var zoneOptions = enabledZones.map(function (zone) {
-          var zoneDay = timezone.dateKeyAt(zone.timeZone, event.answeredAt);
-          var zoneTime = timezone.timeLabelAt(zone.timeZone, event.answeredAt);
+          var zoneDay = timezone.dateKeyAt(zone.timeZone, event.answeredAt) || "—";
+          var zoneTime = timezone.timeLabelAt(zone.timeZone, event.answeredAt) || "";
           return "<option value='" + escapeHtml(zone.timeZone) + "'"
             + (zone.timeZone === selectedZone ? " selected" : "") + ">"
-            + escapeHtml(zone.label + " — " + zoneDay + " " + zoneTime)
+            + escapeHtml(zone.label + " — " + (zoneDay + " " + zoneTime).trim())
             + "</option>";
         }).join("");
         takenTime = "<select class=taken-zone data-identity='" + escapeHtml(identity)
           + "' data-initial='" + escapeHtml(selectedZone) + "'>"
           + zoneOptions + "</select>";
       }
-      return "<tr><th scope=row>Pill " + (event.slotId + 1) + "</th><td>"
+      return "<tr><th scope=row>Pill " + escapeHtml(event.slotId + 1) + "</th><td>"
         + escapeHtml(time) + "</td><td>" + escapeHtml(outcomeLabel(event.outcome))
         + "</td><td>" + takenTime + "</td></tr>";
     }).join("");
     return "<details><summary><strong>" + escapeHtml(day) + "</strong> — "
-      + counts.taken + "/" + counts.scheduled + " taken</summary>"
+      + escapeHtml(counts.taken + "/" + counts.scheduled) + " taken</summary>"
       + "<table><thead><tr><th>Pill</th><th>Home time</th><th>Status</th><th>Taken time</th></tr></thead>"
       + "<tbody>" + rows + "</tbody></table></details>";
   }).join("");
@@ -275,7 +173,10 @@ function settingsSection(settings, appearance, timeZones) {
   var fallbackSlots = [8, 12, 18, 22].map(function (hour, id) {
     return { id: id, hour: hour, minute: 0, enabled: true };
   });
-  var slots = settings && Array.isArray(settings.slots)
+  var slots = settings && Array.isArray(settings.slots) && settings.slots.length === rules.SLOT_COUNT
+    && settings.slots.every(function (slot) {
+      return slot && Number.isInteger(slot.hour) && Number.isInteger(slot.minute);
+    })
     ? settings.slots
     : fallbackSlots;
   var display = settings && settings.display ? settings.display : {
@@ -288,7 +189,7 @@ function settingsSection(settings, appearance, timeZones) {
   var zones = normaliseZones(settings);
   function options(values, selected) {
     return values.map(function (entry) {
-      return "<option value=" + entry[0]
+      return "<option value=" + escapeHtml(entry[0])
         + (entry[0] === selected ? " selected" : "") + ">"
         + escapeHtml(entry[1]) + "</option>";
     }).join("");
@@ -297,8 +198,8 @@ function settingsSection(settings, appearance, timeZones) {
     return "<div class='reminder configurable-row' id=slot-row-" + index
       + (slot.enabled ? "" : " hidden") + "><label for=slot-" + index + "-time>Pill "
       + (index + 1) + "</label><input id=slot-" + index
-      + "-time type=time required value='" + pad2(slot.hour) + ":"
-      + pad2(slot.minute) + "'><label class=toggle><input id=slot-" + index
+      + "-time type=time required value='" + escapeHtml(pad2(slot.hour) + ":"
+      + pad2(slot.minute)) + "'><label class=toggle><input id=slot-" + index
       + "-enabled type=checkbox" + (slot.enabled ? " checked" : "")
       + " onchange=hideUnchecked('slot'," + index + ")> Enabled</label></div>";
   }).join("");
@@ -308,15 +209,15 @@ function settingsSection(settings, appearance, timeZones) {
     if (!currentScheme) {
       var currentText = colorSchemes.colorForId(zone.textColor);
       var currentBackground = colorSchemes.colorForId(zone.backgroundColor);
-      currentOption = "<option value='" + zone.textColor + "," + zone.backgroundColor
-        + "' data-text='" + currentText.css + "' data-background='"
-        + currentBackground.css + "' selected>Current colours</option>";
+      currentOption = "<option value='" + escapeHtml(zone.textColor + "," + zone.backgroundColor)
+        + "' data-text='" + escapeHtml(currentText.css) + "' data-background='"
+        + escapeHtml(currentBackground.css) + "' selected>Current colours</option>";
     }
     return currentOption + colorSchemes.SCHEMES.map(function (scheme) {
       var text = colorSchemes.colorForId(scheme.textColor);
       var background = colorSchemes.colorForId(scheme.backgroundColor);
-      return "<option value='" + scheme.textColor + "," + scheme.backgroundColor
-        + "' data-text='" + text.css + "' data-background='" + background.css + "'"
+      return "<option value='" + escapeHtml(scheme.textColor + "," + scheme.backgroundColor)
+        + "' data-text='" + escapeHtml(text.css) + "' data-background='" + escapeHtml(background.css) + "'"
         + (currentScheme && scheme.id === currentScheme.id ? " selected" : "") + ">"
         + escapeHtml(scheme.name) + "</option>";
     }).join("");
@@ -376,8 +277,13 @@ function settingsSection(settings, appearance, timeZones) {
     + "<button class=save onclick=saveSettings()>Save settings</button></section>";
 }
 
+/**
+ * Builds the complete report and settings page.
+ * @param {Object} state - The phone state from storage.
+ * @return {string} The HTML document.
+ */
 exports.buildReportPage = function buildReportPage(state) {
-  var appearance = ["auto", "light", "dark"].indexOf(state.appearance) >= 0
+  var appearance = APPEARANCES.indexOf(state.appearance) >= 0
     ? state.appearance
     : "auto";
   var now = Date.now();
@@ -387,15 +293,10 @@ exports.buildReportPage = function buildReportPage(state) {
     if (timeZones.indexOf(zone.timeZone) === -1) timeZones.unshift(zone.timeZone);
   });
   var reportEvents = expectedEvents(state.events, zones[0].timeZone);
-  var todayKey = timezone.dateKeyAt(zones[0].timeZone, now) || localDay(new Date(now));
-  var todayOrdinal = dayOrdinal(todayKey);
+  var todayKey = history.homeTodayKey(zones[0].timeZone, now);
   function eventsWithinHomeDays(dayCount) {
     return reportEvents.filter(function (event) {
-      var eventOrdinal = dayOrdinal(event.localDay);
-      return eventOrdinal !== null
-        && todayOrdinal !== null
-        && eventOrdinal <= todayOrdinal
-        && eventOrdinal > todayOrdinal - dayCount;
+      return rules.withinHomeDays(event.localDay, todayKey, dayCount);
     });
   }
   var thirtyDayEvents = eventsWithinHomeDays(30);
@@ -413,14 +314,14 @@ exports.buildReportPage = function buildReportPage(state) {
     warning += "<p class=warning>Report may be stale. Open Number Watch on watch to sync.</p>";
   }
   if (state.droppedEvents > 0) {
-    warning += "<p class=warning>Watch reports " + state.droppedEvents
+    warning += "<p class=warning>Watch reports " + escapeHtml(state.droppedEvents)
       + " older event(s) dropped after watch history overflow.</p>";
   }
   if (state.warning) {
     warning += "<p class=warning>" + escapeHtml(state.warning) + "</p>";
   }
 
-  return "<!doctype html><html lang=en data-appearance='" + appearance + "'><head><meta charset=utf-8>"
+  return "<!doctype html><html lang=en data-appearance='" + escapeHtml(appearance) + "'><head><meta charset=utf-8>"
     + "<meta name=viewport content='width=device-width,initial-scale=1'>"
     + "<title>Pill Reminder report</title><style>"
     + ":root{color-scheme:light;--page:#fff;--text:#000;--muted:#4d5968;--sync:#34445a;--card:#fff;--border:#c9d2dd;--row:#dfe5ec;--field:#fff;--field-text:#000;--close:#dce8f4;--close-text:#172033}"
@@ -450,29 +351,19 @@ exports.buildReportPage = function buildReportPage(state) {
     + "<p class=muted>Taken means self-reported. Not taken means no Taken response; it does not prove a missed dose. "
     + "This report is not a medical record.</p>"
     + "<section class=card><h2>Report history</h2>"
-    + "<p class=muted>Choose how much recent history to keep. Save exports the records that will be removed.</p>"
+    + "<p class=muted>Choose how much recent history to keep. Days are Home calendar days, "
+    + "matching the summary cards above. Save exports the records that will be removed.</p>"
     + "<label for=history-retention>Keep records</label><select id=history-retention>"
     + "<option value=7>Last 7 days</option><option value=30>Last 30 days</option>"
     + "<option value=all>Nothing — clear all</option></select>"
     + "<button type=button onclick=saveClearedRecords()>Save records to file</button>"
     + "<button class=danger onclick=clearHistory()>Clear older records</button></section>"
     + "<button class=close onclick=closeReport()>Close</button>"
-    + "<script>var historyEvents=" + jsonForScript(state.events) + ";"
-    + "var timeZones=" + jsonForScript(timeZones) + ";"
-    + timezoneMatches.toString() + filterTimeZones.toString() + selectTimeZone.toString()
-    + "function closeWith(v){location.href='pebblejs://close#'+encodeURIComponent(JSON.stringify(v))}"
-    + "function applyAppearance(value){document.documentElement.setAttribute('data-appearance',value)}"
-    + "function updateSchemePreview(index){var select=document.getElementById('zone-'+index+'-scheme');var option=select.options[select.selectedIndex];var preview=document.getElementById('zone-'+index+'-scheme-preview');preview.style.color=option.getAttribute('data-text');preview.style.backgroundColor=option.getAttribute('data-background')}"
-    + "function hideUnchecked(kind,index){var enabled=document.getElementById(kind+'-'+index+'-enabled');if(enabled&&!enabled.checked)document.getElementById(kind+'-row-'+index).hidden=true}"
-    + "function addRow(kind){var start=kind==='zone'?1:0;var limit=kind==='zone'?" + TIMEZONE_COUNT + ":4;for(var i=start;i<limit;i++){var row=document.getElementById(kind+'-row-'+i);if(row.hidden){row.hidden=false;document.getElementById(kind+'-'+i+'-enabled').checked=true;return}}alert(kind==='zone'?'Maximum four timezones including Home.':'Maximum four reminders.')}"
-    + "function saveSettings(){var slots=[];for(var i=0;i<4;i++){var enabled=document.getElementById('slot-'+i+'-enabled').checked;var time=document.getElementById('slot-'+i+'-time');var p=time.value.split(':');if(!enabled&&p.length!==2)p=time.defaultValue.split(':');if(p.length!==2){alert('Set all reminder times.');return;}slots.push({id:i,hour:parseInt(p[0],10),minute:parseInt(p[1],10),enabled:enabled});}for(var l=0;l<4;l++){if(!slots[l].enabled)continue;for(var r=l+1;r<4;r++){if(!slots[r].enabled)continue;var gap=Math.abs((slots[l].hour*60+slots[l].minute)-(slots[r].hour*60+slots[r].minute));gap=Math.min(gap,1440-gap);if(gap<2){alert('Enabled reminders need at least a two minute gap.');return;}}}var zones=[];for(var z=0;z<" + TIMEZONE_COUNT + ";z++){var zoneEnabled=z===0||document.getElementById('zone-'+z+'-enabled').checked;var labelInput=document.getElementById('zone-'+z+'-label');var label=labelInput.value.trim().toUpperCase();if(!zoneEnabled&&!/^[A-Z0-9 ]{1,8}$/.test(label))label=labelInput.defaultValue.trim().toUpperCase();if(!/^[A-Z0-9 ]{1,8}$/.test(label)){alert('Timezone labels need 1-8 letters, numbers, or spaces.');return;}var scheme=document.getElementById('zone-'+z+'-scheme').value.split(',');zones.push({id:z,enabled:zoneEnabled,timeZone:document.getElementById('zone-'+z+'-time-zone').value,useDigits:document.getElementById('zone-'+z+'-use-digits').value==='1',label:label,textColor:parseInt(scheme[0],10),backgroundColor:parseInt(scheme[1],10)});}closeWith({action:'save_settings',appearance:document.getElementById('appearance').value,display:{useDigits:zones[0].useDigits,horizontal:parseInt(document.getElementById('horizontal').value,10),vertical:parseInt(document.getElementById('vertical').value,10),fontSize:parseInt(document.getElementById('font-size').value,10),textColor:zones[0].textColor,backgroundColor:zones[0].backgroundColor},zones:zones,slots:slots})}"
-    + "function historySelection(){var value=document.getElementById('history-retention').value;var days=value==='all'?0:parseInt(value,10);if(days===0)return{days:days,events:historyEvents.slice()};var cutoff=Date.now()-days*24*60*60*1000;return{days:days,events:historyEvents.filter(function(event){return event.scheduledAt<=cutoff})}}"
-    + "function saveClearedRecords(){var selection=historySelection();if(selection.events.length===0){alert('No records in this range to save.');return;}var payload={exportedAt:new Date().toISOString(),keptDays:selection.days,events:selection.events};var content=JSON.stringify(payload,null,2);var link=document.createElement('a');link.download='number-watch-history-'+new Date().toISOString().slice(0,10)+'.json';if(typeof Blob==='function'&&typeof URL!=='undefined'&&URL.createObjectURL){var objectUrl=URL.createObjectURL(new Blob([content],{type:'application/json'}));link.href=objectUrl;setTimeout(function(){URL.revokeObjectURL(objectUrl)},1000)}else{link.href='data:application/json;charset=utf-8,'+encodeURIComponent(content)}document.body.appendChild(link);link.click();document.body.removeChild(link)}"
-    + "function clearHistory(){var selection=historySelection();var description=selection.days===0?'all phone report history':'records older than '+selection.days+' days';if(confirm('Clear '+description+'? Save them first if needed.'))closeWith({action:'clear_history',retentionDays:selection.days})}"
-    + "function closeReport(){closeWith({action:'close'})}"
-    + "function updateZoneLabel(index){var value=document.getElementById('zone-'+index+'-time-zone').value;var p=value.split('/');document.getElementById('zone-'+index+'-label').value=p[p.length-1].replace(/_/g,' ').toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,8)}"
-    + "function saveTakenZones(){var nodes=document.querySelectorAll('.taken-zone');var events=[];for(var i=0;i<nodes.length;i++){if(nodes[i].value!==nodes[i].getAttribute('data-initial'))events.push({identity:nodes[i].getAttribute('data-identity'),timeZone:nodes[i].value})}closeWith({action:'update_taken_zones',events:events})}"
-    + "for(var p=0;p<" + TIMEZONE_COUNT + ";p++)updateSchemePreview(p)"
+    + "<script>" + pageScript.buildPageScript({
+      historyEvents: state.events,
+      timeZones: timeZones,
+      homeTodayKey: todayKey,
+    })
     + "</script>"
     + "</main></body></html>";
 };

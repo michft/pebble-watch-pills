@@ -139,3 +139,26 @@ test("rejects persisted history above the watch limit", () => {
 
   assert.equal(decodeAppState(serialized), null);
 });
+
+test("records event timezone offsets east-positive like the phone bridge", () => {
+  const previousTimezone = process.env.TZ;
+  try {
+    for (const [timeZone, expected] of [
+      ["Australia/Sydney", 660],
+      ["America/New_York", -300],
+      ["UTC", 0],
+    ] as const) {
+      process.env.TZ = timeZone;
+      const state = createDefaultState(1_000, 0.5);
+      const event = ensureReminderEvent(state, 0, Date.UTC(2026, 0, 15, 12));
+      assert.equal(event.timezoneOffset, expected, timeZone);
+      assert.equal(Object.is(event.timezoneOffset, -0), false);
+    }
+  } finally {
+    if (previousTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = previousTimezone;
+    }
+  }
+});

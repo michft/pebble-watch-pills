@@ -76,6 +76,16 @@ Settings arriving during a report sync queue a fresh report, so the latest
 configuration is confirmed. Open reminder and timezone lists refresh when
 phone changes arrive; an unsaved watch reminder edit stays yours to save or cancel.
 
+## If the watch keeps an older version after an update
+
+The watch binary stores only the first two version numbers (for example `0.3`
+of `0.3.0`). All `0.2.x` releases share binary version `0.2`. This may explain
+missed automatic updates, but the cause is not confirmed on a device. From
+`0.3.0`, every release increases the binary version. If the watch still shows old behaviour after
+updating to `0.3.0` or later, remove Number Watch in rePebble and reinstall it
+once. Reinstalling can clear data stored on the watch, so check reminders and
+timezones afterwards.
+
 ## Acknowledge a reminder
 
 When a reminder is due, the watch vibrates and displays **TAKE PILL 1**,

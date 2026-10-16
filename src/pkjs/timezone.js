@@ -1,5 +1,8 @@
+var rules = require("./rules");
+
 var formatterCache = {};
-var TIMEZONE_COUNT = 4;
+var TIMEZONE_COUNT = rules.TIMEZONE_COUNT;
+var labelForTimeZone = rules.labelForTimeZone;
 
 var FALLBACK_TIME_ZONES = [
   "UTC",
@@ -26,6 +29,13 @@ var FALLBACK_TIME_ZONES = [
   "Pacific/Honolulu",
 ];
 
+/**
+ * Returns a cached 24-hour formatter for a timezone.
+ * `hour12: false` is set alongside `hourCycle` because some engines support
+ * formatToParts but ignore hourCycle, which would otherwise yield 12-hour parts.
+ * @param {string} timeZone - The IANA timezone name.
+ * @return {Intl.DateTimeFormat} The formatter.
+ */
 function formatterFor(timeZone) {
   if (!formatterCache[timeZone]) {
     formatterCache[timeZone] = new Intl.DateTimeFormat("en-US", {
@@ -36,19 +46,48 @@ function formatterFor(timeZone) {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
+      hour12: false,
       hourCycle: "h23",
     });
   }
   return formatterCache[timeZone];
 }
 
-function partNumber(parts, type) {
+function partValue(parts, type) {
   for (var index = 0; index < parts.length; index += 1) {
-    if (parts[index].type === type) return parseInt(parts[index].value, 10);
+    if (parts[index].type === type) return parts[index].value;
   }
-  return NaN;
+  return null;
 }
 
+function partNumber(parts, type) {
+  var value = partValue(parts, type);
+  return value === null ? NaN : parseInt(value, 10);
+}
+
+/**
+ * Normalises a formatted hour to 0-23.
+ * Handles "24" for midnight (h24-style engines) and 12-hour output with a
+ * dayPeriod part from engines that ignore both hour12 and hourCycle.
+ * @param {Array<Object>} parts - Parts from formatToParts.
+ * @return {number} The hour, or NaN when it cannot be read.
+ */
+function hourFromParts(parts) {
+  var hour = partNumber(parts, "hour");
+  var dayPeriod = partValue(parts, "dayPeriod");
+  if (dayPeriod !== null) {
+    var afternoon = /^p/i.test(String(dayPeriod).replace(/[^A-Za-z]/g, ""));
+    hour = hour % 12 + (afternoon ? 12 : 0);
+  }
+  return hour === 24 ? 0 : hour;
+}
+
+/**
+ * Reads the wall-clock fields of an instant in a timezone.
+ * @param {string} timeZone - The IANA timezone name.
+ * @param {number} timestampMs - The instant in milliseconds.
+ * @return {?Object} Year, month, day, hour (0-23), minute, and second, or null.
+ */
 function zonedParts(timeZone, timestampMs) {
   if (typeof Intl === "undefined" || !Intl.DateTimeFormat) return null;
   try {
@@ -57,12 +96,12 @@ function zonedParts(timeZone, timestampMs) {
       year: partNumber(parts, "year"),
       month: partNumber(parts, "month"),
       day: partNumber(parts, "day"),
-      hour: partNumber(parts, "hour"),
+      hour: hourFromParts(parts),
       minute: partNumber(parts, "minute"),
       second: partNumber(parts, "second"),
     };
     if (Object.keys(result).some(function (key) {
-      return !Number.isFinite(result[key]);
+      return !isFinite(result[key]);
     })) return null;
     return result;
   } catch (error) {
@@ -177,24 +216,26 @@ function normaliseZones(settings) {
   return zones;
 }
 
+/**
+ * Calculates a timezone's UTC offset at an instant.
+ * @param {string} timeZone - The IANA timezone name.
+ * @param {number} timestampMs - The instant in milliseconds.
+ * @return {?number} Minutes east of UTC, or null when unresolvable.
+ */
 function offsetMinutesAt(timeZone, timestampMs) {
-  if (typeof Intl === "undefined" || !Intl.DateTimeFormat) return null;
-  try {
-    var rounded = Math.floor(timestampMs / 60000) * 60000;
-    var parts = formatterFor(timeZone).formatToParts(new Date(rounded));
-    var representedAsUtc = Date.UTC(
-      partNumber(parts, "year"),
-      partNumber(parts, "month") - 1,
-      partNumber(parts, "day"),
-      partNumber(parts, "hour"),
-      partNumber(parts, "minute"),
-      partNumber(parts, "second")
-    );
-    var offset = Math.round((representedAsUtc - rounded) / 60000);
-    return Number.isFinite(offset) ? offset : null;
-  } catch (error) {
-    return null;
-  }
+  var rounded = Math.floor(timestampMs / 60000) * 60000;
+  var parts = zonedParts(timeZone, rounded);
+  if (!parts) return null;
+  var representedAsUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+  var offset = Math.round((representedAsUtc - rounded) / 60000);
+  return isFinite(offset) ? offset : null;
 }
 
 function timezoneSnapshot(timeZone, timestampMs) {
@@ -230,15 +271,6 @@ function timezoneSnapshot(timeZone, timestampMs) {
   };
 }
 
-function labelForTimeZone(timeZone) {
-  var segments = String(timeZone || "UTC").split("/");
-  return segments[segments.length - 1]
-    .replace(/_/g, " ")
-    .toUpperCase()
-    .replace(/[^A-Z0-9 ]/g, "")
-    .slice(0, 8);
-}
-
 function supportedTimeZones() {
   var zones = FALLBACK_TIME_ZONES.slice();
   if (
@@ -255,6 +287,7 @@ function supportedTimeZones() {
   return zones;
 }
 
+exports.canonicalTimeZoneName = rules.canonicalTimeZoneName;
 exports.labelForTimeZone = labelForTimeZone;
 exports.normaliseZoneSettings = normaliseZoneSettings;
 exports.normaliseZones = normaliseZones;

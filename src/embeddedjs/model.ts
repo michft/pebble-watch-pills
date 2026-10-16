@@ -1,3 +1,13 @@
+/**
+ * Test-only reference model.
+ *
+ * This file is not part of the Pebble build: the shipped watch logic lives in
+ * src/c and the phone bridge in src/pkjs. It is exercised by tests/model.test.ts
+ * as an executable specification of the reminder, slot, and event rules.
+ * Timezone offsets here use the same east-positive convention as
+ * src/pkjs/timezone.js offsetMinutesAt (for example, Australia/Sydney in
+ * January is +660 and America/New_York is -300).
+ */
 export const APP_STATE_VERSION = 1;
 export const SLOT_COUNT = 4;
 export const WATCH_HISTORY_LIMIT = 128;
@@ -21,6 +31,7 @@ export interface ReminderEvent {
   slotId: SlotId;
   scheduledAt: number;
   localDay: string;
+  /** Minutes east of UTC at `scheduledAt` (UTC+10 is 600, UTC-5 is -300). */
   timezoneOffset: number;
   outcome: Outcome;
   answeredAt: number | null;
@@ -392,20 +403,32 @@ export function ensureReminderEvent(
     return existing;
   }
 
-  const date = new Date(scheduledAt);
   const event: ReminderEvent = {
     installId: state.installId,
     sequence: state.nextSequence,
     slotId,
     scheduledAt,
     localDay: localDayForTimestamp(scheduledAt),
-    timezoneOffset: date.getTimezoneOffset(),
+    timezoneOffset: eastPositiveOffsetMinutes(scheduledAt),
     outcome: "no_response",
     answeredAt: null,
   };
   state.nextSequence += 1;
   state.events.push(event);
   return event;
+}
+
+/**
+ * Converts the host offset to minutes east of UTC.
+ *
+ * `Date#getTimezoneOffset` is west-positive, so its sign is inverted here.
+ *
+ * @param timestamp - The instant whose local offset is needed
+ * @returns The local UTC offset in minutes, positive east of UTC
+ */
+export function eastPositiveOffsetMinutes(timestamp: number): number {
+  const westPositive = new Date(timestamp).getTimezoneOffset();
+  return westPositive === 0 ? 0 : -westPositive;
 }
 
 /**

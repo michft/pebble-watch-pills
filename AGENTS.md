@@ -9,6 +9,11 @@ Before declaring any task complete, perform all applicable housekeeping:
 - Update README instructions when setup, operation, deployment, or maintenance
   behavior changes.
 - Update `CHANGELOG.md` and `package.json` together when preparing a release.
+  Every PR to `main` releases, so it must bump the version: increase MAJOR or
+  MINOR over the latest `v*` tag with PATCH 0 (MAJOR/MINOR at most 255). The
+  watch binary only sees MAJOR.MINOR; this policy ensures its version changes
+  on every release. Whether equal binary versions caused missed automatic
+  updates remains unverified on device. Verify with `pnpm release:check`.
 - Run focused tests and checks for changed files. Also run `git diff --check`.
   Do not run a development server or full build unless the user requested it.
 - Review `jj status` and the final diff. Preserve unrelated user changes and

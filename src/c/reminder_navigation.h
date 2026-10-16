@@ -43,3 +43,11 @@ void reminder_navigation_open(
 ReminderAlertAction reminder_navigation_alert_action(
   ReminderAlertButton button
 );
+
+/** Keeps the selected row inside a scrolling viewport of `visible_rows`. */
+uint8_t reminder_navigation_scroll_offset(
+  uint8_t selection,
+  uint8_t scroll_offset,
+  uint8_t item_count,
+  uint8_t visible_rows
+);

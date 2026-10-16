@@ -18,7 +18,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
-      PEBBLE_FIREBASE_REFRESH_TOKEN: ${{ secrets.PEBBLE_FIREBASE_REFRESH_TOKEN }}
+      CC: gcc
 
     steps:
       - name: Check out source
@@ -39,28 +39,35 @@ jobs:
           node-version: 22.18.0
           cache: pnpm
 
+      # Fails when this version is already tagged (published) or does not
+      # increase MAJOR.MINOR over the latest v* tag.
       - name: Read release metadata
         id: release
-        run: node scripts/release-metadata.js
-
-      - name: Reject an already released version
-        env:
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}"; then
-            echo "${RELEASE_TAG} already exists; bump package.json and CHANGELOG.md." >&2
-            exit 1
-          fi
+        run: node scripts/release-metadata.js --require-previous
 
       - name: Check deployment settings
+        env:
+          PEBBLE_FIREBASE_API_KEY: ${{ secrets.PEBBLE_FIREBASE_API_KEY }}
+          PEBBLE_FIREBASE_REFRESH_TOKEN: ${{ secrets.PEBBLE_FIREBASE_REFRESH_TOKEN }}
         run: |
-          if [ -z "${PEBBLE_FIREBASE_REFRESH_TOKEN}" ]; then
-            echo "Set the PEBBLE_FIREBASE_REFRESH_TOKEN repository secret." >&2
-            exit 1
-          fi
+          for name in PEBBLE_FIREBASE_REFRESH_TOKEN PEBBLE_FIREBASE_API_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "Set the ${name} repository secret." >&2
+              exit 1
+            fi
+          done
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify C compiler is GCC
+        run: |
+          "${CC}" --version
+          if "${CC}" -dM -E -x c /dev/null | grep -q '__clang__'; then
+            echo "${CC} is Clang; native C harnesses must be checked with GCC." >&2
+            exit 1
+          fi
+          "${CC}" -dM -E -x c /dev/null | grep -q '__GNUC__'
 
       - name: Test
         run: pnpm test
@@ -71,11 +78,15 @@ jobs:
           python-version: "3.12"
 
       - name: Install Pebble SDK
+        env:
+          UV_VERSION: 0.13.1
+          PEBBLE_TOOL_VERSION: 5.0.40
+          PEBBLE_SDK_VERSION: 4.33.1
         run: |
-          python -m pip install uv
-          uv tool install pebble-tool
-          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
-          "$(uv tool dir --bin)/pebble" sdk install latest
+          python -m pip install "uv==${UV_VERSION}"
+          uv tool install "pebble-tool==${PEBBLE_TOOL_VERSION}"
+          uv tool dir --bin >> "${GITHUB_PATH}"
+          "$(uv tool dir --bin)/pebble" sdk install "${PEBBLE_SDK_VERSION}"
 
       - name: Build PBW
         run: pnpm build
@@ -91,14 +102,54 @@ jobs:
             exit 1
           fi
 
-      - name: Refresh Pebble app-store token
+      # Release state lives in a draft GitHub Release (drafts create no tag).
+      # The store-published.txt asset records a successful store upload, so a
+      # rerun skips the store and only finishes the GitHub Release.
+      - name: Prepare draft GitHub Release
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ steps.release.outputs.notes }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          STORE_PUBLISHED=false
+          if gh release view "${RELEASE_TAG}" --json isDraft > /dev/null 2>&1; then
+            if [ "$(gh release view "${RELEASE_TAG}" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "${RELEASE_TAG} is already published; bump package.json and CHANGELOG.md." >&2
+              exit 1
+            fi
+            DRAFT_TARGET="$(gh release view "${RELEASE_TAG}" --json targetCommitish --jq .targetCommitish)"
+            STORE_PUBLISHED="$(gh release view "${RELEASE_TAG}" --json assets \
+              --jq 'any(.assets[]; .name == "store-published.txt")')"
+            if [ "${STORE_PUBLISHED}" = "true" ]; then
+              if [ "${DRAFT_TARGET}" != "${GITHUB_SHA}" ]; then
+                echo "Store already has ${RELEASE_TAG} from ${DRAFT_TARGET}; publish that draft manually or bump the version." >&2
+                exit 1
+              fi
+              echo "Store upload already recorded for ${RELEASE_TAG}; skipping store."
+            else
+              echo "Replacing unpublished draft ${RELEASE_TAG} (target ${DRAFT_TARGET})."
+              gh release delete "${RELEASE_TAG}" --yes
+            fi
+          fi
+          if [ "${STORE_PUBLISHED}" != "true" ]; then
+            gh release create "${RELEASE_TAG}" build/pebble-watch-pills.pbw \
+              --draft \
+              --target "${GITHUB_SHA}" \
+              --title "Number Watch ${RELEASE_TAG}" \
+              --notes "${RELEASE_NOTES}"
+          fi
+          echo "store_published=${STORE_PUBLISHED}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish release to Pebble app store
+        if: steps.draft.outputs.store_published != 'true'
         env:
           PEBBLE_FIREBASE_API_KEY: ${{ secrets.PEBBLE_FIREBASE_API_KEY }}
+          PEBBLE_FIREBASE_REFRESH_TOKEN: ${{ secrets.PEBBLE_FIREBASE_REFRESH_TOKEN }}
+          RELEASE_NOTES: ${{ steps.release.outputs.notes }}
+          RELEASE_SCREENSHOT: ${{ steps.release.outputs.screenshot }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          if [ -z "${PEBBLE_FIREBASE_API_KEY}" ]; then
-            echo "Set the PEBBLE_FIREBASE_API_KEY repository secret." >&2
-            exit 1
-          fi
           TOKEN_RESPONSE="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Content-Type: application/x-www-form-urlencoded" \
@@ -108,29 +159,31 @@ jobs:
           PEBBLE_FIREBASE_ID_TOKEN="$(printf '%s' "${TOKEN_RESPONSE}" | node -e \
             'let value=""; process.stdin.on("data", chunk => value += chunk); process.stdin.on("end", () => { const token = JSON.parse(value).id_token; if (!token) throw new Error("Firebase response has no id_token"); process.stdout.write(token); });')"
           echo "::add-mask::${PEBBLE_FIREBASE_ID_TOKEN}"
-          echo "PEBBLE_FIREBASE_ID_TOKEN=${PEBBLE_FIREBASE_ID_TOKEN}" >> "${GITHUB_ENV}"
-
-      - name: Publish release to Pebble app store
-        env:
-          RELEASE_NOTES: ${{ steps.release.outputs.notes }}
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
-        run: |
+          unset TOKEN_RESPONSE PEBBLE_FIREBASE_REFRESH_TOKEN PEBBLE_FIREBASE_API_KEY
+          # Exported only within this step; never written to GITHUB_ENV.
+          export PEBBLE_FIREBASE_ID_TOKEN
           pebble publish \
             --api-base "https://appstore-api.repebble.com" \
             --release-notes "${RELEASE_NOTES}" \
             --version "${RELEASE_VERSION}" \
             --is-published \
             --no-gif-all-platforms \
-            --screenshots docs/screenshots/emery_screenshot.png \
+            --screenshots "${RELEASE_SCREENSHOT}" \
             --non-interactive
 
-      - name: Create GitHub Release
+      - name: Record store publication
+        if: steps.draft.outputs.store_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_NOTES: ${{ steps.release.outputs.notes }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          gh release create "${RELEASE_TAG}" build/pebble-watch-pills.pbw \
-            --target "${GITHUB_SHA}" \
-            --title "Number Watch ${RELEASE_TAG}" \
-            --notes "${RELEASE_NOTES}"
+          MARKER="${RUNNER_TEMP}/store-published.txt"
+          printf 'Published %s to the Pebble app store from %s at %s.\n' \
+            "${RELEASE_TAG}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${MARKER}"
+          gh release upload "${RELEASE_TAG}" "${MARKER}"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: gh release edit "${RELEASE_TAG}" --draft=false --latest
