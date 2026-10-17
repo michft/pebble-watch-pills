@@ -3,6 +3,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 const { buildReportPage } = require("../src/pkjs/report-page.js");
 const { dateKeyAt } = require("../src/pkjs/timezone.js");
+const { dayKeyFromOrdinal, dayOrdinal } = require("../src/pkjs/rules.js");
 
 function zones() {
   return [
@@ -191,7 +192,6 @@ test("renders checked-only settings and selectable taken timezone", () => {
   assert.match(html, /id=appearance[^]*<option value=dark selected>/);
   assert.match(html, /id=zone-0-scheme[^]*Current colours<\/option>/);
   assert.match(html, /id=zone-0-scheme-preview/);
-  assert.match(html, /updateSchemePreview\(p\)/);
   assert.doesNotMatch(html, /id=zone-0-text-color/);
   assert.doesNotMatch(html, /id=zone-0-background-color/);
   assert.match(html, /Words and reminder times follow the watch's 12\/24-hour system setting/);
@@ -215,18 +215,156 @@ test("renders checked-only settings and selectable taken timezone", () => {
   const takenSelect = html.match(/<select class=taken-zone[^]*?<\/select>/)[0];
   assert.doesNotMatch(takenSelect, /value='America\/New_York'/);
   assert.match(html, /Save taken timezones/);
-  assert.match(
-    html,
-    /nodes\[i\]\.value!==nodes\[i\]\.getAttribute\('data-initial'\)/,
-  );
-  assert.match(html, /Enabled reminders need at least a two minute gap/);
   assert.match(html, /Report history/);
   assert.match(html, /id=history-retention/);
   assert.match(html, /value=7>Last 7 days/);
   assert.match(html, /value=30>Last 30 days/);
   assert.match(html, /Save records to file/);
-  assert.match(html, /new Blob\(\[content\]/);
-  assert.match(html, /retentionDays:selection\.days/);
+});
+
+function pageHarness(html, elements = {}) {
+  const element = (id) => {
+    if (!elements[id]) {
+      elements[id] = {
+        value: "", checked: false, hidden: false, style: {}, selectedIndex: 0,
+        options: [{ getAttribute(name) { return `${id}:${name}`; } }],
+      };
+    }
+    return elements[id];
+  };
+  const page = {
+    alerts: [], confirms: [], closed: [], nodes: [],
+  };
+  const context = {
+    document: {
+      getElementById: element,
+      querySelectorAll(selector) { return selector === ".taken-zone" ? page.nodes : []; },
+      createElement() { return {}; },
+      documentElement: { setAttribute(name, value) { page.appearance = value; } },
+    },
+    location: {
+      set href(value) { page.closed.push(JSON.parse(decodeURIComponent(value.split("#")[1]))); },
+    },
+    alert(message) { page.alerts.push(message); },
+    confirm(message) { page.confirms.push(message); return true; },
+  };
+  vm.runInNewContext(html.match(/<script>([\s\S]+)<\/script>/)[1], context);
+  return { context, elements, page, element };
+}
+
+test("page script previews schemes, posts changed taken zones, and confirms clears", () => {
+  const { context, page, elements } = pageHarness(buildReportPage({
+    events: [], droppedEvents: 0, settings: { zones: zones(), slots: [] },
+  }));
+  for (let index = 0; index < 4; index += 1) {
+    assert.deepEqual({ ...elements[`zone-${index}-scheme-preview`].style }, {
+      color: `zone-${index}-scheme:data-text`,
+      backgroundColor: `zone-${index}-scheme:data-background`,
+    });
+  }
+  context.applyAppearance("dark");
+  assert.equal(page.appearance, "dark");
+
+  const select = (identity, initial, value) => ({
+    value, getAttribute(name) { return name === "data-identity" ? identity : initial; },
+  });
+  page.nodes.push(select("watch:1", "UTC", "UTC"), select("watch:2", "UTC", "Asia/Tokyo"));
+  context.saveTakenZones();
+  assert.deepEqual(page.closed.pop(), {
+    action: "update_taken_zones", events: [{ identity: "watch:2", timeZone: "Asia/Tokyo" }],
+  });
+
+  elements["history-retention"] = { value: "7" };
+  context.clearHistory();
+  assert.match(page.confirms.pop(), /last 7 Home days/);
+  assert.deepEqual(page.closed.pop(), { action: "clear_history", retentionDays: 7 });
+  elements["history-retention"].value = "all";
+  context.clearHistory();
+  assert.deepEqual(page.closed.pop(), { action: "clear_history", retentionDays: 0 });
+});
+
+test("page script enforces the shared reminder gap and label rules", () => {
+  const { context, page, elements } = pageHarness(buildReportPage({
+    events: [], droppedEvents: 0, settings: { zones: zones(), slots: [] },
+  }));
+  elements.appearance = { value: "auto" };
+  ["horizontal", "vertical", "font-size"].forEach((id) => { elements[id] = { value: "1" }; });
+  zones().forEach((zone, index) => {
+    elements[`slot-${index}-time`] = { value: ["08:00", "08:01", "23:59", "00:00"][index] };
+    elements[`slot-${index}-enabled`] = { checked: index < 2 };
+    elements[`zone-${index}-enabled`] = { checked: zone.enabled };
+    elements[`zone-${index}-label`] = { value: zone.label, defaultValue: zone.label };
+    elements[`zone-${index}-time-zone`] = { value: zone.timeZone };
+    elements[`zone-${index}-use-digits`] = { value: "0" };
+    elements[`zone-${index}-scheme`].value = "0,1";
+  });
+  context.saveSettings();
+  assert.deepEqual(page.alerts.splice(0), ["Enabled reminders need at least a two minute gap."]);
+  elements["slot-1-enabled"].checked = false;
+  elements["slot-2-enabled"].checked = true;
+  elements["slot-3-enabled"].checked = true;
+  context.saveSettings();
+  assert.deepEqual(page.alerts.splice(0), ["Enabled reminders need at least a two minute gap."],
+    "23:59 and 00:00 are one minute apart across midnight");
+  elements["slot-3-time"].value = "00:01";
+  elements["zone-1-label"].value = "too long label";
+  context.saveSettings();
+  assert.deepEqual(page.alerts.splice(0), ["Timezone labels need 1-8 letters, numbers, or spaces."]);
+  elements["zone-1-label"].value = "london";
+  context.saveSettings();
+  assert.deepEqual(page.alerts, []);
+  const saved = page.closed.pop();
+  assert.equal(saved.zones[1].label, "LONDON");
+  assert.deepEqual(saved.slots.map((slot) => [slot.hour, slot.minute, slot.enabled]),
+    [[8, 0, true], [8, 1, false], [23, 59, true], [0, 1, true]]);
+});
+
+test("timezone choices use canonical names and Etc/GMT labels follow UTC sign", () => {
+  const { context, elements, element } = pageHarness(buildReportPage({
+    events: [], droppedEvents: 0, settings: { zones: zones(), slots: [] },
+  }));
+  context.timeZones = ["UTC", "Europe/London"];
+  const select = element("zone-1-time-zone");
+  select.value = "Europe/London";
+  select.options = [];
+  select.appendChild = (option) => select.options.push(option);
+  elements["zone-1-search"] = { value: "us/eastern" };
+  context.filterTimeZones(1);
+  const canonical = new Intl.DateTimeFormat("en-US", { timeZone: "us/eastern" })
+    .resolvedOptions().timeZone;
+  assert.equal(select.options[1].value, canonical);
+  assert.equal(select.options.some((option) => option.value === "us/eastern"), false);
+  elements["zone-1-search"].value = "Etc/GMT+5";
+  context.filterTimeZones(1);
+  select.value = "Etc/GMT+5";
+  context.selectTimeZone(1);
+  assert.equal(elements["zone-1-label"].value, "UTC 5W");
+});
+
+test("escapes every interpolated value and hides malformed response times", () => {
+  const now = Date.now();
+  const html = buildReportPage({
+    appearance: "dark",
+    events: [{
+      installId: "<i>", sequence: "'><b>", slotId: 0, scheduledAt: now,
+      localDay: dateKeyAt("Australia/Sydney", now), homeTimeZone: "Australia/Sydney",
+      outcome: "taken", answeredAt: "<script>",
+    }],
+    settings: {
+      zones: zones().map((zone) => ({ ...zone, label: "<b>X</b>", textColor: 99 })),
+      slots: [{ id: 0, hour: "8' onfocus='alert(1)", minute: 0, enabled: true }, 1, 2, 3],
+    },
+    lastSyncAt: null,
+    droppedEvents: 2,
+    warning: null,
+  });
+  const markup = html.replace(/<script>[\s\S]*<\/script>/, "");
+  assert.doesNotMatch(markup, /<b>|<i>|onfocus=/);
+  assert.match(markup, /Home — &lt;b&gt;X&lt;\/b&gt;/);
+  assert.doesNotMatch(markup, /null null|class=taken-zone/);
+  assert.match(markup, /id=slot-0-time type=time required value='08:00'/,
+    "malformed slots fall back to defaults");
+  assert.match(html, /"installId":"\\u003ci>"/, "script data is escaped");
 });
 
 test("saves and reopens Sydney words, Sydney digits, and UTC words", () => {
@@ -454,14 +592,15 @@ test("falls back to Home plus three hidden timezone slots and auto appearance", 
   assert.match(html, /prefers-color-scheme:dark/);
 });
 
-test("exports only history selected for clearing", () => {
+test("exports only history older than the kept Home days", () => {
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
+  const homeDay = (offsetDays) => dayKeyFromOrdinal(dayOrdinal(dateKeyAt("Australia/Sydney", now)) + offsetDays);
   const html = buildReportPage({
     events: [
-      { installId: "watch", sequence: 1, slotId: 0, scheduledAt: now - 8 * day, localDay: "2026-07-31", outcome: "no_response", answeredAt: null },
-      { installId: "watch", sequence: 2, slotId: 0, scheduledAt: now - 6 * day, localDay: "2026-08-02", outcome: "taken", answeredAt: now - 6 * day + 1 },
-      { installId: "watch", sequence: 3, slotId: 0, scheduledAt: now + day, localDay: "2026-08-09", outcome: "no_response", answeredAt: null },
+      { installId: "watch", sequence: 1, slotId: 0, scheduledAt: now - 7 * day, localDay: homeDay(-7), outcome: "no_response", answeredAt: null },
+      { installId: "watch", sequence: 2, slotId: 0, scheduledAt: now - 6 * day, localDay: homeDay(-6), outcome: "taken", answeredAt: now - 6 * day + 1 },
+      { installId: "watch", sequence: 3, slotId: 0, scheduledAt: now + day, localDay: homeDay(1), outcome: "no_response", answeredAt: null },
     ],
     settings: { zones: zones(), slots: [] },
     lastSyncAt: now,

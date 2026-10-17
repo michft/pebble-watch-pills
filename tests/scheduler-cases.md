@@ -30,3 +30,8 @@ Run on Emery emulator, then physical Pebble Time 2.
 - Leave the time display visible until a reminder is due. Confirm alert interrupts it; leave it unanswered, confirm `no_response`, then confirm time display returns.
 - Configure Home plus three optional timezones. Confirm Up/Down cycles only
   checked labels and every zone uses its configured colours.
+- Take a dose, then edit that reminder to a later time the same Home day.
+  Confirm it does not alert again until the next Home day, for both a
+  watch-local Home and a named Home timezone.
+- Upgrade from v0.2.x with reminders and history stored. Confirm reminders,
+  history, and the install ID survive the state migration.

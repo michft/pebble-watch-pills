@@ -12,9 +12,10 @@ test("native display time applies fixed UTC offsets", () => {
 
   try {
     childProcess.execFileSync(
-      "cc",
+      process.env.CC ?? "cc",
       [
         "-std=c11",
+        "-O2",
         "-Wall",
         "-Wextra",
         "-Werror",
