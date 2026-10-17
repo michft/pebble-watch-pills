@@ -89,7 +89,8 @@ jobs:
           "$(uv tool dir --bin)/pebble" sdk install "${PEBBLE_SDK_VERSION}"
 
       - name: Build PBW
-        run: pnpm build
+        # Let the SDK select ARM GCC rather than the host test compiler.
+        run: env -u CC pnpm build
 
       - name: Verify PBW version
         env:
