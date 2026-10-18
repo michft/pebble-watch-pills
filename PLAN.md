@@ -1,6 +1,11 @@
-# Number Watch with Pill Reminders — Implemented Plan
+# Number Watch with Pill Reminders — Historical Plan
 
-Status: implemented for release 0.2.8
+Status: historical. This plan was implemented in release 0.2.8 and is kept for
+reference only; it is not maintained. Current behaviour is documented in
+[README.md](README.md) and [Using the app](docs/using-the-app.md), and release
+history in [CHANGELOG.md](CHANGELOG.md). Later releases added per-timezone
+Words/Digits display (display config version 4) and changed the release
+versioning rule (see README "Releases").
 
 Target: Pebble Time 2 / rePebble `emery`
 
@@ -14,7 +19,7 @@ persistence, wakeups, and phone report remain intact.
 Reminder alert interrupts watchface. Pebble OS reserves buttons for true
 watchfaces, so prior button outcome flow cannot be used unchanged.
 
-## Current workflow expansion
+## Workflow expansion (as planned for 0.2.8)
 
 - Default screen remains the watchface.
 - Home plus three optional named timezones replace the single alternate zone.
@@ -70,8 +75,9 @@ wakeup      -> reminder alert -> Up acknowledgement records Taken
 ```
 
 `time_words.c` and `display_time.c` remain Pebble-independent for host C tests.
-Reminder persistence stays version 2; display config migrates to version 3 in
-its separate persistence key.
+At 0.2.8, reminder persistence stayed version 2 and display config migrated to
+version 3 in its separate persistence key. Display config is now version 4;
+reminder persistence remains version 2.
 
 ## Validation
 

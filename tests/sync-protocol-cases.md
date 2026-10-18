@@ -31,3 +31,9 @@
   checked timezone and keeps the original Home day after later Home changes.
 - Cross a 23-hour or 25-hour Home day. Confirm grouping uses Home calendar dates,
   not elapsed 24-hour windows.
+- Start Phone Report while a background sync is running. Confirm the status
+  screen appears and returns to Configuration when the transfer completes.
+- Hold Up on the Phone Report screen mid-transfer. Confirm the transfer still
+  completes in the background.
+- Confirm event `localDay` and `timezoneOffset` (minutes east of UTC) follow
+  the Home timezone, including just after a Home DST transition.

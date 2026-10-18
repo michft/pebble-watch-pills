@@ -8,6 +8,20 @@
 #define DISPLAY_TIME_MAX_OFFSET_MINUTES (14 * 60)
 #define DISPLAY_TIME_OFFSET_STEP_MINUTES 15
 
+/** Returns whether a UTC offset is in the real-world range on a 15-minute step. */
+bool display_time_offset_valid(int32_t offset_minutes);
+
+/** Returns the offset in force at `utc_time` for a zone with one known transition. */
+int16_t display_time_active_offset(
+  time_t utc_time,
+  int16_t utc_offset_minutes,
+  time_t transition_at,
+  int16_t transition_offset_minutes
+);
+
+/** Returns a stable YYYYMMDD key for broken-down calendar parts. */
+int32_t display_time_day_key(const struct tm *parts);
+
 /**
  * Converts a UTC timestamp to hour and minute at a fixed UTC offset.
  *
@@ -45,7 +59,12 @@ bool display_time_named_day_key(
   int32_t *day_key
 );
 
-/** Finds the next real UTC instant matching a named-zone wall time. */
+/**
+ * Finds the next real UTC instant (minute-aligned, at least one minute after
+ * `now`, within 50 hours) matching a named-zone wall time. A wall time skipped
+ * by a forward transition resolves to the first minute after the jump; the
+ * calendar day `excluded_day_key` is skipped.
+ */
 bool display_time_next_named_occurrence(
   time_t now,
   int hour,

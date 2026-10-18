@@ -59,3 +59,15 @@ ReminderAlertAction reminder_navigation_alert_action(
   }
   return REMINDER_ALERT_ACTION_NONE;
 }
+
+uint8_t reminder_navigation_scroll_offset(
+  uint8_t selection,
+  uint8_t scroll_offset,
+  uint8_t item_count,
+  uint8_t visible_rows
+) {
+  if (item_count <= visible_rows || visible_rows == 0) return 0;
+  if (selection < scroll_offset) return selection;
+  if (selection >= scroll_offset + visible_rows) return (uint8_t)(selection - visible_rows + 1);
+  return scroll_offset;
+}

@@ -115,13 +115,13 @@ Requirements:
 - Node.js 22.18.0+
 - pnpm
 - rePebble `pebble-tool` and current SDK
-- C compiler for native formatter tests
+- C compiler for native formatter tests (`CC`, default `cc`; CI uses `gcc`)
 
-One-time SDK setup:
+One-time SDK setup (versions match the release workflow pins):
 
 ```sh
-uv tool install pebble-tool
-pebble sdk install latest
+uv tool install pebble-tool==5.0.40
+pebble sdk install 4.33.1
 ```
 
 Project commands:
@@ -129,8 +129,13 @@ Project commands:
 ```sh
 pnpm install
 pnpm test
+pnpm release:check
 pnpm build
 ```
+
+`pnpm release:check` validates the release metadata described under
+[Releases](#releases). To run C harnesses with GCC locally, use
+`CC=gcc pnpm test` (on macOS, `gcc` is usually Clang; install a real GCC).
 
 Package output: `build/pebble-watch-pills.pbw`.
 
@@ -166,10 +171,57 @@ and enabled in rePebble iOS app.
 
 ## Releases
 
-`package.json` version is release source of truth. Before merging release to
-`main`, increment version and add matching `CHANGELOG.md` entry. Push to `main`
-runs tests, builds watchapp, uploads Pebble app-store version, then creates
-GitHub Release with `.pbw`.
+### Pull request checks
+
+Pull requests targeting `main` run on Linux with `CC=gcc`. The job fails unless
+the compiler really is GCC, the PR diff passes `git diff --check`, the version
+is release-worthy (below), and `pnpm test` passes, including native C harnesses
+built with warnings treated as errors (`-O2 -Wall -Wextra -Werror`). The job
+then builds the PBW with the pinned Pebble SDK, because host harnesses compile
+against stub headers in `tests/host/` and cannot catch real SDK API mismatches.
+For native C or C test-harness changes, a macOS `pnpm test` pass is insufficient:
+macOS `cc` normally uses Clang. Confirm the Linux PR `test` check passes on the
+current head SHA before merging; an earlier commit's green check does not count.
+
+This caught a repeated release failure in the timezone-label sync harness:
+GCC reported `-Werror=format-truncation` for an unbounded `%s` copy into a
+nine-byte buffer, even after a length check. Keep warnings fatal and bound the
+copy explicitly. Preserve rejection of oversized labels and test that all eight
+allowed characters survive; do not turn invalid input into an accepted truncation.
+
+### Versioning rule
+
+`package.json` version is release source of truth, and every merge to `main`
+releases it, so **every PR to `main` must bump the version** and add a matching
+`CHANGELOG.md` entry.
+
+Each release must increase MAJOR or MINOR over the latest released `v*` tag,
+with PATCH `0` and MAJOR/MINOR at most 255 (for example `0.2.18` → `0.3.0`).
+The Pebble SDK stores only MAJOR.MINOR in the watch binary and discards PATCH.
+All `0.2.x` releases therefore share binary version `0.2`. Equal binary versions
+may explain reports of watches keeping an older build until reinstall, but
+that cause has not been confirmed on a device. This policy ensures every
+release changes the binary version.
+
+`pnpm release:check` (`scripts/release-metadata.js`) enforces this. It checks
+the X.Y.0 format, the matching `CHANGELOG.md` entry, the 200×228 store
+screenshot, and compares against the highest `v*` git tag (run
+`git fetch --tags` first). Override the comparison with
+`node scripts/release-metadata.js --previous v0.2.18` or
+`RELEASE_PREVIOUS_VERSION`; `--require-previous` fails when no tag is found
+(CI uses it).
+
+### Release workflow
+
+Push to `main` runs tests, builds the watchapp with pinned `uv`, `pebble-tool`,
+and SDK versions, then:
+
+1. creates a draft GitHub Release with the `.pbw` (drafts create no tag),
+2. publishes the version to the Pebble app store and attaches
+   `store-published.txt` to the draft as a record,
+3. publishes the GitHub Release, creating the `v*` tag.
+
+Secrets are exposed only to the steps that check or use them.
 
 Required GitHub repository secrets:
 
@@ -197,7 +249,24 @@ supported `pebble publish` command. Existing store entry resolves from PBW UUID
 `384b30aa3eeb468ba63a4f7e`.
 
 If auth revoked, run `pebble login`, update refresh-token secret, and retry.
-Reused version fails before build; bump `package.json` and `CHANGELOG.md` first.
+A version that is already tagged, or not a MAJOR/MINOR increase, fails before
+build; bump `package.json` and `CHANGELOG.md` first.
+
+### Release recovery
+
+Rerun the failed workflow (Actions → run → Re-run jobs); state lives in the
+draft release:
+
+- Failed before or during store upload: the rerun replaces the unpublished
+  draft and uploads to the store again. If the store did accept the version but
+  the job failed before recording it, check the store listing; if the version is
+  live, attach a marker and rerun so the store step is skipped:
+  `echo manual > store-published.txt && gh release upload vX.Y.0 store-published.txt`.
+- Failed after the store upload was recorded: the rerun skips the store and
+  only publishes the GitHub Release. Or finish it manually with
+  `gh release edit vX.Y.0 --draft=false --latest`.
+- A draft that recorded a store upload from a different commit blocks the
+  release; publish that draft manually or bump the version in a new PR.
 
 ## Design reference
 

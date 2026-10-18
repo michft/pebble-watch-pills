@@ -2,6 +2,43 @@
 
 All published versions are tracked here and as GitHub Releases.
 
+## [0.3.0] - 2026-10-17
+
+- Change the watch binary version from 0.2 to 0.3. Releases now bump MINOR
+  (or MAJOR) with PATCH 0, enforced by `pnpm release:check` on pull requests.
+  The SDK discards PATCH; whether equal binary versions caused missed
+  automatic updates remains unverified on device.
+- Make releases recoverable: publish a draft GitHub Release first, record store
+  publication, and skip completed steps on rerun. Scope store secrets to the
+  steps that need them and pin release tooling versions.
+- Corrupt reminder history no longer wipes reminder times or the install ID;
+  lost events are counted as dropped. Stored watch state migrates to version 3.
+- Report each event's Home-timezone day and offset. A reminder edited after
+  its dose was taken no longer alerts again the same Home day.
+- Show sync status when Phone Report is opened during a background sync, and
+  show "Storage save failed" when display settings cannot be saved. Reject
+  oversized outgoing messages and malformed incoming values instead of
+  sending or applying them.
+- Build PBWs on pull requests and check native harnesses with GCC at `-O2`.
+  Split the watch app into focused modules and load only the active digit font.
+- "Keep last 7/30 days" now clears and exports Home calendar days, matching the
+  report's summary cards.
+- Refuse to save, with a warning, when timezone data cannot be sent from this
+  phone, and retry delivery with a warning if it fails later. A disabled
+  timezone row no longer blocks saving.
+- Save timezone aliases under their canonical IANA name, and label `Etc/GMT`
+  zones by their real UTC direction.
+- Read timezone hours correctly on phones whose JavaScript ignores `hourCycle`.
+- Keep a backup and show a warning instead of silently resetting unsupported
+  stored phone data. Remove unused legacy message keys.
+
+## [0.2.18] - 2026-10-16
+
+- Bound timezone-label copies explicitly so GCC's strict truncation checks pass
+  during release tests. Preserve full eight-character labels and reject longer
+  or invalid labels before applying settings.
+- Run tests and release metadata checks on Linux for pull requests before merge.
+
 ## [0.2.17] - 2026-10-13
 
 - Enlarge both Digits rows to use most of the watch display, with dedicated
