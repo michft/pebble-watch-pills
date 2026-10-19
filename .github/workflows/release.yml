@@ -163,6 +163,9 @@ jobs:
           unset TOKEN_RESPONSE PEBBLE_FIREBASE_REFRESH_TOKEN PEBBLE_FIREBASE_API_KEY
           # Exported only within this step; never written to GITHUB_ENV.
           export PEBBLE_FIREBASE_ID_TOKEN
+          # pebble publish rebuilds the app; let the SDK select ARM GCC rather
+          # than the host test compiler.
+          unset CC
           pebble publish \
             --api-base "https://appstore-api.repebble.com" \
             --release-notes "${RELEASE_NOTES}" \
