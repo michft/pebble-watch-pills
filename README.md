@@ -222,6 +222,10 @@ and SDK versions, then:
 3. publishes the GitHub Release, creating the `v*` tag.
 
 Secrets are exposed only to the steps that check or use them.
+`CC=gcc` selects the compiler for native host tests. Both the PBW build and
+`pebble publish` (which rebuilds the app) clear `CC` so the SDK selects ARM GCC.
+The test suite exercises the publish step with synthetic credentials and
+stand-in commands, without contacting the store.
 
 Required GitHub repository secrets:
 

@@ -20,6 +20,7 @@ All published versions are tracked here and as GitHub Releases.
   oversized outgoing messages and malformed incoming values instead of
   sending or applying them.
 - Build PBWs on pull requests and check native harnesses with GCC at `-O2`.
+  Store publication rebuilds with the SDK's ARM compiler, not the host GCC.
   Split the watch app into focused modules and load only the active digit font.
 - "Keep last 7/30 days" now clears and exports Home calendar days, matching the
   report's summary cards.
